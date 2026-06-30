@@ -1,0 +1,2261 @@
+'use strict';
+
+const FINANCE_PIN   = '2026';
+const SETTINGS_PASS = '2026';
+const IDLE_TIMEOUT  = 15 * 60 * 1000;
+
+const SUPABASE_URL = 'https://okisjizcyidvvwdwehaa.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9raXNqaXpjeWlkdnZ3ZHdlaGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTYzNjMsImV4cCI6MjA5ODM5MjM2M30.O_0EeK297a07B7FLunpWr6HDlqrfP5Z8Owyp3qE4hQE';
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let state = {
+  currentUser       : null,
+  profile           : null,
+  financeUnlocked   : false,
+  settingsUnlocked  : false,
+  currentSection    : 'dashboard',
+  currentAdminSection: null,
+  alertsOpen        : false,
+  db                : null,
+  adminPinCallback  : null,
+  adminPinAction    : null,
+  pendingFinanceAction: null,
+  idleTimer         : null,
+  lastActivity      : Date.now(),
+  sessionTimeout    : null,
+  _saveDebounce     : null,
+};
+
+/* ──────────────────────────────────────────────────────────────────
+   § 1  SEED DATA (for initial database setup)
+────────────────────────────────────────────────────────────────── */
+function seedData() {
+  const now = Date.now();
+  const d = (h, m=0) => new Date(now - h*3600000 - m*60000).toISOString();
+  const f = (h, m=0) => new Date(now + h*3600000 + m*60000).toISOString();
+  
+  return {
+    trucks: [
+      { id:'TRK001', reg:'KDA 001A', make:'ISUZU FVZ', type:'Prime Mover', year:2020, colour:'White', status:'on_trip', fuelPct:68, mileage:142300, driver:'DRV001', lastService:d(480), nextService:f(720), notes:'A/C serviced May', img:'', licencePlate:'KDA 001A', vin:'ISUZU123456789' },
+      { id:'TRK002', reg:'KDB 234B', make:'HINO 700', type:'Prime Mover', year:2019, colour:'Red', status:'available', fuelPct:91, mileage:198500, driver:null, lastService:d(240), nextService:f(1440), notes:'', img:'', licencePlate:'KDB 234B', vin:'HINO987654321' },
+      { id:'TRK003', reg:'KDC 567C', make:'ISUZU FVZ', type:'Flatbed', year:2021, colour:'Blue', status:'maintenance', fuelPct:34, mileage:87200, driver:null, lastService:d(48), nextService:f(2160), notes:'Rear axle grease', img:'', licencePlate:'KDC 567C', vin:'ISUZU456123789' },
+      { id:'TRK004', reg:'KDD 890D', make:'MAN TGX', type:'Prime Mover', year:2022, colour:'White', status:'available', fuelPct:77, mileage:52100, driver:null, lastService:d(360), nextService:f(960), notes:'', img:'', licencePlate:'KDD 890D', vin:'MAN789456123' },
+      { id:'TRK005', reg:'KDE 123E', make:'VOLVO FH', type:'Prime Mover', year:2018, colour:'Orange', status:'breakdown', fuelPct:12, mileage:312000, driver:'DRV003', lastService:d(720), nextService:d(24), notes:'Engine coolant leak', img:'', licencePlate:'KDE 123E', vin:'VOLVO321654987' },
+      { id:'TRK006', reg:'KDF 456F', make:'HINO 700', type:'Prime Mover', year:2021, colour:'Silver', status:'available', fuelPct:55, mileage:73400, driver:null, lastService:d(180), nextService:f(1080), notes:'', img:'', licencePlate:'KDF 456F', vin:'HINO741852963' },
+      { id:'TRK007', reg:'KDG 789G', make:'ISUZU FVZ', type:'Tipper', year:2020, colour:'Yellow', status:'off_duty', fuelPct:88, mileage:101200, driver:null, lastService:d(120), nextService:f(1200), notes:'Night shift rest', img:'', licencePlate:'KDG 789G', vin:'ISUZU852963741' },
+      { id:'TRK008', reg:'KDH 012H', make:'MAN TGX', type:'Prime Mover', year:2023, colour:'White', status:'on_trip', fuelPct:62, mileage:21000, driver:'DRV005', lastService:d(96), nextService:f(2400), notes:'New unit', img:'', licencePlate:'KDH 012H', vin:'MAN963741852' },
+    ],
+    drivers: [
+      { id:'DRV001', name:'James Otieno', phone:'+254 722 100 001', licence:'DL-A1234', licenceExp:f(8760), status:'on_trip', truckId:'TRK001', tripsToday:2, load:'MSCU1234567', location:'Miritini Gate', idNo:'12345678', rating:4.8 },
+      { id:'DRV002', name:'Peter Kamau', phone:'+254 733 200 002', licence:'DL-B5678', licenceExp:f(4380), status:'available', truckId:null, tripsToday:0, load:null, location:'Gargo Yard', idNo:'23456789', rating:4.5 },
+      { id:'DRV003', name:'Ali Hassan', phone:'+254 711 300 003', licence:'DL-C9012', licenceExp:f(2190), status:'off_duty', truckId:'TRK005', tripsToday:1, load:null, location:'Roadside B8', idNo:'34567890', rating:4.2 },
+      { id:'DRV004', name:'Samuel Mutuku', phone:'+254 744 400 004', licence:'DL-D3456', licenceExp:f(6570), status:'available', truckId:null, tripsToday:0, load:null, location:'Gargo Yard', idNo:'45678901', rating:4.9 },
+      { id:'DRV005', name:'Ibrahim Farah', phone:'+254 755 500 005', licence:'DL-E7890', licenceExp:f(3285), status:'on_trip', truckId:'TRK008', tripsToday:3, load:'OOLU9876543', location:'Changamwe Rd', idNo:'56789012', rating:4.7 },
+      { id:'DRV006', name:'Grace Wanjiku', phone:'+254 700 600 006', licence:'DL-F1234', licenceExp:f(1095), status:'suspended', truckId:null, tripsToday:0, load:null, location:'—', idNo:'67890123', rating:4.0 },
+      { id:'DRV007', name:'Joseph Mwangi', phone:'+254 712 700 007', licence:'DL-G5678', licenceExp:f(5475), status:'available', truckId:null, tripsToday:1, load:null, location:'Gargo Yard', idNo:'78901234', rating:4.6 },
+      { id:'DRV008', name:'Fatuma Swaleh', phone:'+254 723 800 008', licence:'DL-H9012', licenceExp:f(730), status:'available', truckId:null, tripsToday:0, load:null, location:'Port Gate A', idNo:'89012345', rating:4.4 },
+    ],
+    trips: [
+      { id:'TRIP001', truckId:'TRK001', driverId:'DRV001', container:'MSCU1234567', ctype:'40ft HC', workType:'Port → Depot', origin:'Kilindini Port', dest:'Shimanzi ICD', shippingLine:'SL001', status:'active', startTime:d(2), eta:f(1), distance:18, priority:'High', notes:'Priority reefer', ref:'BL-2024-001' },
+      { id:'TRIP002', truckId:'TRK008', driverId:'DRV005', container:'OOLU9876543', ctype:'20ft Dry', workType:'Depot → Client', origin:'Shimanzi ICD', dest:'Changamwe Depot', shippingLine:'SL002', status:'active', startTime:d(1), eta:f(2), distance:12, priority:'Normal', notes:'', ref:'BL-2024-002' },
+      { id:'TRIP003', truckId:'TRK002', driverId:'DRV002', container:'MAEU5551234', ctype:'40ft Dry', workType:'Client → Port', origin:'Port Reitz', dest:'Kilindini Port', shippingLine:'SL001', status:'completed', startTime:d(5), eta:d(3), distance:22, priority:'Normal', notes:'', ref:'BL-2024-003' },
+      { id:'TRIP004', truckId:'TRK004', driverId:'DRV004', container:'CMAU3219870', ctype:'40ft HC', workType:'Port → CFS', origin:'Kilindini Port', dest:'Mombasa CFS', shippingLine:'SL003', status:'delayed', startTime:d(3), eta:d(0.5), distance:9, priority:'Urgent', notes:'Gate queue 2hr', ref:'BL-2024-004' },
+      { id:'TRIP005', truckId:'TRK006', driverId:'DRV007', container:'HLCU7778901', ctype:'20ft Reefer', workType:'Port → Depot', origin:'Kilindini Port', dest:'EPZ Cold Store', shippingLine:'SL004', status:'completed', startTime:d(4), eta:d(2), distance:14, priority:'High', notes:'Temp: -18°C', ref:'BL-2024-005' },
+    ],
+    maintenance: [
+      { id:'MNT001', truckId:'TRK005', type:'Breakdown', desc:'Engine coolant leak — radiator hose burst on B8 highway. Tow requested.', priority:'critical', status:'open', date:d(4), cost:0, tech:'Abdul Nassir', resolvedDate:null },
+      { id:'MNT002', truckId:'TRK003', type:'Scheduled', desc:'Rear axle bearing replacement. Truck is off-road pending parts arrival.', priority:'high', status:'in_progress', date:d(24), cost:18500, tech:'John Gitonga', resolvedDate:null },
+      { id:'MNT003', truckId:'TRK001', type:'Preventive', desc:'Oil change, filter replacement, brake pad inspection.', priority:'medium', status:'resolved', date:d(168), cost:8700, tech:'Paul Mwema', resolvedDate:d(120) },
+      { id:'MNT004', truckId:'TRK002', type:'Electrical', desc:'Dashboard warning light — alternator output low. Tested & cleared.', priority:'low', status:'resolved', date:d(336), cost:3200, tech:'Abdul Nassir', resolvedDate:d(288) },
+      { id:'MNT005', truckId:'TRK007', type:'Tyre', desc:'Two rear tyres worn below minimum tread. Replaced with Bridgestone L317.', priority:'medium', status:'resolved', date:d(72), cost:42000, tech:'Moses Kwame', resolvedDate:d(48) },
+    ],
+    fuel: [
+      { id:'FUEL001', truckId:'TRK001', driverId:'DRV001', date:d(2), litres:180, pricePerLitre:155, station:'Kobil Shimanzi', odometer:142100, receipt:'RCP-001' },
+      { id:'FUEL002', truckId:'TRK008', driverId:'DRV005', date:d(5), litres:240, pricePerLitre:155, station:'Total Changamwe', odometer:20750, receipt:'RCP-002' },
+      { id:'FUEL003', truckId:'TRK002', driverId:'DRV002', date:d(8), litres:150, pricePerLitre:153, station:'Shell Mombasa', odometer:198250, receipt:'RCP-003' },
+      { id:'FUEL004', truckId:'TRK004', driverId:'DRV004', date:d(12), litres:200, pricePerLitre:155, station:'Kobil Miritini', odometer:51900, receipt:'RCP-004' },
+      { id:'FUEL005', truckId:'TRK006', driverId:'DRV007', date:d(20), litres:170, pricePerLitre:154, station:'Galana Changamwe', odometer:73200, receipt:'RCP-005' },
+    ],
+    shippingLines: [
+      { id:'SL001', code:'MSC', name:'Mediterranean Shipping Co.', contact:'mombasa@msc.com', rate20:12000, rate40:18000, rateHC:20000, active:true },
+      { id:'SL002', code:'OOCL', name:'Orient Overseas Container Line', contact:'ke@oocl.com', rate20:11500, rate40:17500, rateHC:19500, active:true },
+      { id:'SL003', code:'CMA', name:'CMA CGM', contact:'mbs@cmacgm.com', rate20:12500, rate40:18500, rateHC:21000, active:true },
+      { id:'SL004', code:'HL', name:'Hapag-Lloyd', contact:'ke@hapag.com', rate20:13000, rate40:19000, rateHC:21500, active:true },
+      { id:'SL005', code:'PIL', name:'Pacific International Lines', contact:'mbs@pil-line.com', rate20:10500, rate40:16000, rateHC:18000, active:false },
+    ],
+    shutouts: [
+      { id:'SHT001', container:'MSCU4449010', vessel:'MSC AURORA', voyage:'VA-112', line:'SL001', date:d(48), status:'open', reason:'Vessel closed cut-off', truckId:'TRK002', driverId:'DRV002', notes:'Rebook next sailing' },
+      { id:'SHT002', container:'OOLU2221890', vessel:'OOCL KENYA', voyage:'OK-088', line:'SL002', date:d(72), status:'redelivery', reason:'Docs not ready at gate', truckId:'TRK004', driverId:'DRV004', notes:'Empty redeliver to ICD' },
+      { id:'SHT003', container:'CMAU1110099', vessel:'CMA SOLEIL', voyage:'CS-034', line:'SL003', date:d(120), status:'resolved', reason:'Gate queue exceeded ETA', truckId:'TRK006', driverId:'DRV007', notes:'Reshipped next day' },
+    ],
+    interchange: [
+      { id:'IC001', container:'MSCU9991110', line:'SL001', date:d(24), type:'Gate-In', truck:'TRK001', driver:'DRV001', condition:'Good', notes:'No damage', status:'approved', img:'' },
+      { id:'IC002', container:'OOLU3332220', line:'SL002', date:d(48), type:'Gate-Out', truck:'TRK002', driver:'DRV002', condition:'Damaged', notes:'Corner post dent', status:'pending', img:'' },
+      { id:'IC003', container:'CMAU5554440', line:'SL003', date:d(72), type:'Gate-In', truck:'TRK004', driver:'DRV004', condition:'Good', notes:'', status:'reconciled', img:'' },
+    ],
+    requisitions: [
+      { id:'REQ001', requester:'DRV001', category:'Fuel Advance', items:'Fuel advance KSh 5,000', amount:5000, date:d(2), status:'approved', approver:'admin', approvedDate:d(1), notes:'' },
+      { id:'REQ002', requester:'DRV003', category:'Tyre Parts', items:'2× Bridgestone L317 rear tyres', amount:42000, date:d(24), status:'pending', approver:null, approvedDate:null, notes:'Urgent — breakdown' },
+      { id:'REQ003', requester:'DRV005', category:'Tool Purchase', items:'Tyre pressure gauge, spanner set', amount:3500, date:d(48), status:'rejected', approver:'admin', approvedDate:d(36), notes:'Not in budget Q3' },
+      { id:'REQ004', requester:'DRV007', category:'Fuel Advance', items:'Fuel advance KSh 3,500', amount:3500, date:d(3), status:'fulfilled', approver:'admin', approvedDate:d(2), notes:'' },
+      { id:'REQ005', requester:'DRV002', category:'Medical', items:'Medical reimbursement — clinic', amount:2800, date:d(6), status:'pending', approver:null, approvedDate:null, notes:'' },
+    ],
+    workshop: [
+      { id:'WS001', truckId:'TRK005', title:'Radiator hose replacement', desc:'Replace burst radiator hose, flush & refill coolant system.', tech:'Abdul Nassir', status:'in_progress', reported:d(4), diagnosed:d(3), parts:'Hose kit KSh 4,200', labour:3500, total:7700 },
+      { id:'WS002', truckId:'TRK003', title:'Rear axle bearing replacement', desc:'Press-fit new Timken bearing set, torque to spec.', tech:'John Gitonga', status:'diagnosed', reported:d(28), diagnosed:d(24), parts:'Bearing KSh 14,000', labour:4500, total:18500 },
+      { id:'WS003', truckId:'TRK001', title:'Full service 140k km', desc:'Oil, filters, brake pads, belt tension checked.', tech:'Paul Mwema', status:'completed', reported:d(180), diagnosed:d(172), parts:'Consumables 5,700', labour:3000, total:8700 },
+    ],
+    invoices: [
+      { id:'INV001', client:'Bidco Africa Ltd', trips:['TRIP001'], date:d(48), due:f(336), status:'sent', subtotal:18000, vat:2880, total:20880, paid:0, ref:'INV-2024-001', notes:'' },
+      { id:'INV002', client:'Bamburi Cement', trips:['TRIP003','TRIP005'], date:d(72), due:f(168), status:'paid', subtotal:30000, vat:4800, total:34800, paid:34800, ref:'INV-2024-002', notes:'EFT confirmed' },
+      { id:'INV003', client:'KAPA Oil Refineries', trips:['TRIP002'], date:d(168), due:d(0), status:'overdue', subtotal:12000, vat:1920, total:13920, paid:0, ref:'INV-2024-003', notes:'Follow up sent' },
+      { id:'INV004', client:'Crown Paints Kenya', trips:[], date:d(1), due:f(504), status:'draft', subtotal:15000, vat:2400, total:17400, paid:0, ref:'INV-2024-004', notes:'' },
+      { id:'INV005', client:'Kenya Ports Authority', trips:['TRIP004'], date:d(24), due:f(312), status:'partial', subtotal:21000, vat:3360, total:24360, paid:12000, ref:'INV-2024-005', notes:'Partial — cheque' },
+    ],
+    billingRates: {
+      '20ft Dry': { base:10000, perKm:150 },
+      '40ft Dry': { base:14000, perKm:200 },
+      '40ft HC': { base:16000, perKm:220 },
+      '20ft Reefer': { base:18000, perKm:250 },
+      '40ft Reefer': { base:22000, perKm:280 },
+      'Flat Rack': { base:13000, perKm:190 },
+      'Open Top': { base:12000, perKm:180 },
+      'Tank': { base:20000, perKm:260 },
+      'Hazmat': { base:25000, perKm:300 },
+    },
+    profiles: [
+      { id:'USR001', username:'admin', name:'System Administrator', role:'admin', email:'admin@gargo.co.ke', created:d(8760), lastLogin:d(0.1), active:true },
+      { id:'USR002', username:'ops1', name:'Mary Achieng', role:'ops', email:'mary@gargo.co.ke', created:d(4380), lastLogin:d(24), active:true },
+      { id:'USR003', username:'finance1', name:'David Kipkoech', role:'finance', email:'david@gargo.co.ke', created:d(2190), lastLogin:d(48), active:true },
+      { id:'USR004', username:'dispatch1', name:'Aisha Mwangi', role:'dispatch', email:'aisha@gargo.co.ke', created:d(1095), lastLogin:d(12), active:true },
+      { id:'USR005', username:'viewer1', name:'Tom Njoroge', role:'viewer', email:'tom@gargo.co.ke', created:d(730), lastLogin:d(168), active:false },
+    ],
+    auditLog: [
+      { id:'AUD001', user:'admin', action:'Login', detail:'System login from 197.232.x.x', time:d(0.1) },
+      { id:'AUD002', user:'admin', action:'Dispatch Created', detail:'TRIP001 — KDA 001A → Shimanzi ICD', time:d(2.2) },
+      { id:'AUD003', user:'ops1', action:'Maintenance Log', detail:'MNT001 — TRK005 breakdown logged', time:d(4.1) },
+      { id:'AUD004', user:'finance1', action:'Invoice Sent', detail:'INV-2024-001 to Bidco Africa Ltd', time:d(47) },
+      { id:'AUD005', user:'admin', action:'Requisition Approved', detail:'REQ001 — Fuel advance KSh 5,000', time:d(1.2) },
+      { id:'AUD006', user:'dispatch1', action:'Status Update', detail:'TRIP004 marked delayed — gate queue', time:d(3.5) },
+    ],
+    allocationRules: [
+      { id:'AR001', name:'Nearest Available', desc:'Prefer trucks closest to pickup origin', weight:35, active:true },
+      { id:'AR002', name:'Fuel Level ≥ 40%', desc:'Skip trucks below 40% fuel unless unavoidable', weight:25, active:true },
+      { id:'AR003', name:'Trip Rotation', desc:'Distribute trips evenly across fleet', weight:20, active:true },
+      { id:'AR004', name:'Licence Type Match', desc:'Match driver licence class to container type', weight:15, active:true },
+      { id:'AR005', name:'Priority Override', desc:'Urgent jobs bypass normal rotation', weight:5, active:true },
+    ],
+    trackingPositions: {
+      TRK001:{ lat:-4.0422, lng:39.6682, speed:42, heading:'N', zone:'Miritini', lastUpdate:d(0.08) },
+      TRK008:{ lat:-4.0312, lng:39.6812, speed:55, heading:'NE', zone:'Changamwe', lastUpdate:d(0.1) },
+      TRK005:{ lat:-4.0551, lng:39.7010, speed:0, heading:'—', zone:'B8 Hwy', lastUpdate:d(4) },
+    },
+    settings: {
+      backupDate: null,
+      mapApiKey: '',
+      whatsapp: true,
+      mpesa: false,
+      companyName:'Gargo Logistics Ltd',
+    },
+  };
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 2  SUPABASE PERSISTENCE
+────────────────────────────────────────────────────────────────── */
+async function loadDB() {
+  try {
+    const { data, error } = await supabase.from('app_state').select('data').eq('id', 'main').single();
+    if (error) throw error;
+    return data.data;
+  } catch (e) {
+    console.warn('Failed to load from Supabase:', e);
+    return null;
+  }
+}
+
+async function saveDB() {
+  if (!state.db) return;
+  try {
+    const { error } = await supabase.from('app_state').upsert({
+      id: 'main',
+      data: state.db,
+      updated_at: new Date().toISOString(),
+    });
+    if (error) throw error;
+  } catch (e) {
+    console.warn('Unable to save to Supabase:', e);
+    toast('Could not save data. Check network.', 'warning', 4000);
+  }
+}
+
+function scheduleSave() {
+  if (state._saveDebounce) clearTimeout(state._saveDebounce);
+  state._saveDebounce = setTimeout(() => {
+    saveDB();
+    state._saveDebounce = null;
+  }, 300);
+}
+
+async function initDB() {
+  let saved = await loadDB();
+  if (saved) {
+    state.db = saved;
+  } else {
+    state.db = seedData();
+    await saveDB();
+  }
+  if (!state.db.settings) {
+    state.db.settings = { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd' };
+  }
+  await saveDB();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 3  UTILITY HELPERS
+────────────────────────────────────────────────────────────────── */
+function uid(pfx='ID') { return pfx + Math.random().toString(36).slice(2,8).toUpperCase(); }
+function fmt(n) { return Number(n).toLocaleString('en-KE'); }
+function fmtKsh(n, mask=false) { 
+  if (mask) return '<span class="money-mask">KSh ••••••</span>'; 
+  return `KSh ${fmt(n)}`; 
+}
+function timeAgo(iso) { 
+  const s=(Date.now()-new Date(iso).getTime())/1000; 
+  if(s <60)return `${Math.round(s)}s ago`; 
+  if(s <3600)return `${Math.round(s/60)}m ago`; 
+  if(s <86400)return `${Math.round(s/3600)}h ago`; 
+  return `${Math.round(s/86400)}d ago`; 
+}
+function fmtTime(iso) { return new Date(iso).toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'}); }
+function fmtDate(iso) { return new Date(iso).toLocaleDateString('en-KE',{day:'2-digit',month:'short',year:'numeric'}); }
+
+function sbadge(status) {
+  const labels={ available:'Available', on_trip:'On Trip', maintenance:'Maintenance', breakdown:'Breakdown', off_duty:'Off Duty', grounded:'Grounded', active:'Active', completed:'Completed', delayed:'Delayed', pending:'Pending', approved:'Approved', rejected:'Rejected', fulfilled:'Fulfilled', overdue:'Overdue', draft:'Draft', sent:'Sent', paid:'Paid', partial:'Partial', critical:'Critical', in_progress:'In Progress', reported:'Reported', diagnosed:'Diagnosed', suspended:'Suspended', reconciled:'Reconciled', open:'Open', resolved:'Resolved', redelivery:'Redelivery' };
+  return `<span class="sbadge s-${status}">${labels[status]||status}</span>`;
+}
+
+function truckName(id) { if(!id)return '—'; const t=state.db.trucks.find(t=>t.id===id); return t? `${t.reg} · ${t.make}` :id; }
+function driverName(id) { if(!id)return '—'; const d=state.db.drivers.find(d=>d.id===id); return d?d.name:id; }
+function lineName(id) { if(!id)return '—'; const l=state.db.shippingLines.find(l=>l.id===id); return l? `${l.code} — ${l.name}` :id; }
+function initials(name) { if(!name)return '?'; return name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
+function fuelColour(pct) { if(pct >60)return 'var(--green)'; if(pct >30)return 'var(--amber)'; return 'var(--red)'; }
+function isAdmin() { return state.profile?.role === 'admin'; }
+function canFinance() { return state.financeUnlocked; }
+function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
+function validatePhone(phone) { return /^\+?[0-9\s\-()]{7,20}$/.test(phone); }
+function sanitize(str) { if(!str)return ''; return str.replace(/[<>]/g,''); }
+
+/* ──────────────────────────────────────────────────────────────────
+   § 4  TOAST SYSTEM
+────────────────────────────────────────────────────────────────── */
+function toast(msg, type='info', dur=3200) {
+  const icons={ success:'✓', error:'✕', warning:'⚠', info:'ℹ' };
+  const el=document.createElement('div');
+  el.className=`toast ${type}`;
+  el.innerHTML=`<span>${icons[type]||'ℹ'}</span><span>${msg}</span>`;
+  const stack=document.getElementById('toastStack');
+  if(stack) stack.prepend(el);
+  setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),350); }, dur);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 5  LOADER
+────────────────────────────────────────────────────────────────── */
+const LOAD_STEPS = [
+  [300,  'Connecting to Supabase…'],
+  [700,  'Loading fleet database…'],
+  [1100, 'Verifying container records…'],
+  [1600, 'Building dispatch queue…'],
+  [2000, 'Activating live tracking…'],
+  [2400, 'System ready.'],
+];
+
+async function runLoader() {
+  const fill = document.getElementById('loaderFill');
+  const status = document.getElementById('loaderStatus');
+  const loader = document.getElementById('loader');
+  if (!fill || !status || !loader) return;
+
+  await initDB();
+
+  // Check for existing Supabase Auth session
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session && session.user) {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      if (profile && profile.active && !error) {
+        state.profile = profile;
+        state.currentUser = {
+          id: session.user.id,
+          email: profile.email,
+          username: profile.username,
+          name: profile.name,
+          role: profile.role
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Session check failed:', e);
+  }
+
+  LOAD_STEPS.forEach(([t, msg], i) => {
+    setTimeout(() => {
+      fill.style.width = `${Math.round(((i + 1) / LOAD_STEPS.length) * 100)}%`;
+      status.textContent = msg;
+      if (i === LOAD_STEPS.length - 1) {
+        setTimeout(() => {
+          loader.classList.add('out');
+          setTimeout(() => {
+            loader.style.display = 'none';
+            if (state.currentUser && state.profile) {
+              bootShell();
+            } else {
+              showLoginScreen();
+            }
+          }, 520);
+        }, 400);
+      }
+    }, t);
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 6  SUPABASE AUTH LOGIN
+────────────────────────────────────────────────────────────────── */
+async function loadUserProfile(userId) {
+  try {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error || !profile) {
+      console.error('Profile not found:', error);
+      return false;
+    }
+
+    if (!profile.active) {
+      toast('Account is deactivated', 'error');
+      return false;
+    }
+
+    state.profile = profile;
+    state.currentUser = { 
+      id: userId, 
+      email: profile.email,
+      username: profile.username,
+      name: profile.name,
+      role: profile.role
+    };
+
+    await supabase.from('profiles').update({ 
+      last_login: new Date().toISOString() 
+    }).eq('id', userId);
+    
+    return true;
+  } catch (e) {
+    console.error('loadUserProfile error:', e);
+    return false;
+  }
+}
+
+function showLoginScreen() {
+  const loginEl=document.getElementById('loginScreen');
+  if(!loginEl) return;
+  loginEl.style.display='flex';
+  animateCounter('ls-fleet',   state.db.trucks.length,       0, 800);
+  animateCounter('ls-drivers', state.db.drivers.length,      0, 800);
+  animateCounter('ls-trips',   state.db.trips.filter(t=>t.status==='active').length, 0, 800);
+  setTimeout(()=>document.getElementById('loginUser')?.focus(), 100);
+}
+
+function animateCounter(id, target, start=0, dur=600) {
+  const el=document.getElementById(id);
+  if(!el) return;
+  const step=(target-start)/(dur/16);
+  let cur=start;
+  const tick=()=>{
+    cur=Math.min(cur+step, target);
+    el.textContent=Math.round(cur);
+    if(cur<target) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+window.doLogin = async function() {
+  const email = document.getElementById('loginUser').value.trim();
+  const password = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+
+  if (!email || !password) {
+    errEl.textContent = 'Email and password required.';
+    return;
+  }
+
+  errEl.textContent = '';
+  const btn = document.querySelector('.login-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span>Signing in…</span>'; }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
+
+    if (error || !data.user) {
+      errEl.textContent = 'Invalid email or password.';
+      return;
+    }
+
+    const { data: profile, error: profileErr } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
+    if (profileErr || !profile) {
+      errEl.textContent = 'Profile not found. Contact administrator.';
+      await supabase.auth.signOut();
+      return;
+    }
+
+    if (!profile.active) {
+      errEl.textContent = 'Account is deactivated.';
+      await supabase.auth.signOut();
+      return;
+    }
+
+    state.profile = profile;
+    state.currentUser = {
+      id: data.user.id,
+      email: profile.email,
+      username: profile.username,
+      name: profile.name,
+      role: profile.role
+    };
+
+    await supabase.from('profiles').update({
+      last_login: new Date().toISOString()
+    }).eq('id', data.user.id);
+
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('shell').style.display = 'flex';
+    bootShell();
+
+  } catch (e) {
+    console.error('Login error:', e);
+    errEl.textContent = 'Connection error. Please try again.';
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span>Sign In</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>'; }
+  }
+};
+ 
+
+
+async function loadUserProfile(userId) {
+  try {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error || !profile) {
+      console.error('Profile not found:', error);
+      return false;
+    }
+    
+    if (!profile.active) {
+      toast('Account is deactivated', 'error');
+      return false;
+    }
+    
+    state.profile = profile;
+    state.currentUser = { 
+      id: userId, 
+      email: profile.email,
+      username: profile.username,
+      name: profile.name,
+      role: profile.role
+    };
+    
+    await supabase.from('profiles').update({ 
+      last_login: new Date().toISOString() 
+    }).eq('id', userId);
+    
+    return true;
+  } catch (e) {
+    console.error('loadUserProfile error:', e);
+    return false;
+  }
+}
+
+async function logout() {
+  if (!confirm('Are you sure you want to sign out?')) return;
+  addAudit(state.profile?.username || 'system', 'Logout', 'User signed out');
+  await supabase.auth.signOut();
+  state.currentUser = null;
+  state.profile = null;
+  state.financeUnlocked = false;
+  state.settingsUnlocked = false;
+  clearIdleTimer();
+  document.getElementById('shell').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('loginUser').focus();
+}
+
+function togglePwVis(inputId, btn) {
+  const inp=document.getElementById(inputId);
+  if(!inp) return;
+  inp.type = inp.type==='password'?'text':'password';
+  const circle=btn?.querySelector('svg circle');
+  if(circle) circle.setAttribute('r', inp.type==='text'?'1':'3');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 7  SHELL BOOT
+────────────────────────────────────────────────────────────────── */
+function bootShell() {
+  document.getElementById('shell').style.display='flex';
+  updateUserChip();
+  startClock();
+  buildBadges();
+  buildAlerts();
+  showSection('dashboard', document.querySelector('.nav-item[data-section="dashboard"]'));
+  populateSelects();
+  startIdleTimer();
+  startLivePulse();
+}
+
+function updateUserChip() {
+  const p=state.profile;
+  if(!p) return;
+  const av=document.getElementById('railUserAv');
+  if(av) av.textContent=initials(p.name);
+  const nm=document.getElementById('railUserName');
+  if(nm) nm.textContent=p.name.split(' ')[0];
+  const rl=document.getElementById('railUserRole');
+  if(rl) rl.textContent=roleLabel(p.role);
+  const tc=document.getElementById('topbarRoleChip');
+  if(tc) tc.textContent=roleLabel(p.role);
+  const mh=document.getElementById('userMenuHeader');
+  if(mh) mh.innerHTML= `<div class="user-menu-header-name">${p.name}</div><div class="user-menu-header-role">${roleLabel(p.role)}</div>`;
+}
+
+function roleLabel(r) { const m={ admin:'System Administrator', ops:'Operations Officer', finance:'Finance Manager', dispatch:'Dispatch Controller', viewer:'Read-Only Viewer' }; return m[r]||r; }
+
+function startClock() {
+  const update=()=>{
+    const now=new Date();
+    const clk=document.getElementById('liveTime');
+    if(clk) clk.textContent=now.toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    const td=document.getElementById('todayDate');
+    if(td) td.textContent=now.toLocaleDateString('en-KE',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+  };
+  update();
+  setInterval(update,1000);
+}
+
+function buildBadges() {
+  const db=state.db;
+  const set=(id,val)=>{ const el=document.getElementById(id); if(el){ el.textContent=val||''; el.style.display=val?'inline':'none'; } };
+  set('badge-trucks',       db.trucks.filter(t=>t.status==='breakdown').length);
+  set('badge-drivers',      db.drivers.filter(d=>d.status==='on_trip').length);
+  set('badge-trips',        db.trips.filter(t=>t.status==='active').length);
+  set('badge-maintenance',  db.maintenance.filter(m=>m.status==='open').length);
+  set('badge-shutout',      db.shutouts.filter(s=>s.status==='open').length);
+  set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
+  set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
+  set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
+}
+
+function buildAlerts() {
+  const db=state.db;
+  const alerts=[];
+  db.maintenance.filter(m=>m.status==='open' && m.priority==='critical').forEach(m=>{
+    alerts.push({ type:'crit', msg: `Critical breakdown — ${truckName(m.truckId)}: ${m.desc.slice(0,60)}…` });
+  });
+  db.trucks.filter(t=>t.fuelPct <20).forEach(t=>{
+    alerts.push({ type:'warn', msg: `Low fuel — ${t.reg}: ${t.fuelPct}% remaining` });
+  });
+  db.trips.filter(t=>t.status==='delayed').forEach(t=>{
+    alerts.push({ type:'warn', msg: `Trip delayed — ${truckName(t.truckId)} → ${t.dest}` });
+  });
+  db.drivers.filter(d=>{ const daysLeft=(new Date(d.licenceExp)-Date.now())/(86400000); return daysLeft <90 && daysLeft >0; }).forEach(d=>{
+    const days=Math.round((new Date(d.licenceExp)-Date.now())/86400000);
+    alerts.push({ type:'warn', msg: `Licence expiry — ${d.name}: ${days} days remaining` });
+  });
+  
+  const list=document.getElementById('alertsList');
+  if(list){
+    list.innerHTML=alerts.length
+      ? alerts.map(a=>`<div class="alert-item ${a.type}"><div class="alert-dot-sm" style="background:${a.type==='crit'?'var(--red)':'var(--amber)'}"></div><span>${a.msg}</span></div>`).join('')
+      : '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px">No active alerts</div>';
+  }
+  const dot=document.getElementById('alertDot');
+  if(dot) dot.style.display=alerts.length?'block':'none';
+}
+
+function toggleAlerts() {
+  const panel=document.getElementById('alertsPanel');
+  if(!panel) return;
+  state.alertsOpen=!state.alertsOpen;
+  panel.classList.toggle('open', state.alertsOpen);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 8  NAVIGATION
+────────────────────────────────────────────────────────────────── */
+const SECTION_META = {
+  dashboard:['Operations','Dashboard'], trucks:['Fleet Management','Trucks'], drivers:['Fleet Management','Drivers'],
+  trips:['Fleet Management','Active Trips'], dispatch:['Operations','Dispatch Console'],
+  maintenance:['Operations','Maintenance Log'], fuel:['Operations','Fuel Log'],
+  shutout:['Container Ops','Shutout'], interchange:['Container Ops','Interchange'],
+  shippinglines:['Container Ops','Shipping Lines'], requisitions:['Compliance','Requisitions'],
+  workshop:['Compliance','Workshop'], invoicing:['Finance','Invoicing'],
+  allocation:['Intelligence','Allocation'], workanalysis:['Intelligence','Work Analysis'],
+  reports:['Intelligence','Reports'], livetracking:['Platform','Live Tracking'],
+  usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
+};
+
+function showSection(sec, btn) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  const el=document.getElementById(`sec-${sec}`);
+  if(el) el.classList.add('active');
+  if(btn) btn.classList.add('active');
+  state.currentSection=sec;
+  const [area,title]=SECTION_META[sec]||['Operations',sec];
+  const tb=document.getElementById('topbarArea');
+  const tt=document.getElementById('topbarTitle');
+  if(tb) tb.textContent=area;
+  if(tt) tt.textContent=title;
+  renderSection(sec);
+  closeUserMenu();
+  if(window.innerWidth<900) document.body.classList.remove('sidebar-open');
+}
+
+function showAdminSection(sec, btn) {
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.admin-nav-item').forEach(n=>n.classList.remove('active'));
+  const el=document.getElementById(`sec-${sec}`);
+  if(el) el.classList.add('active');
+  if(btn) btn.classList.add('active');
+  state.currentAdminSection=sec;
+  const [area,title]=SECTION_META[sec]||['Admin',sec];
+  const tb=document.getElementById('topbarArea');
+  const tt=document.getElementById('topbarTitle');
+  if(tb) tb.textContent=area;
+  if(tt) tt.textContent=title;
+  renderSection(sec);
+}
+
+function renderSection(sec) {
+  const fn=sectionRenderers[sec];
+  if(fn) fn();
+}
+
+const sectionRenderers = {
+  dashboard:renderDashboard, trucks:()=>renderTrucks('all'), drivers:()=>renderDrivers('all'),
+  trips:()=>renderTrips('active'), dispatch:renderDispatch, maintenance:()=>renderMaint('all'),
+  fuel:renderFuel, shutout:()=>renderShutout('all'), interchange:()=>renderInterchange('all'),
+  shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
+  workshop:()=>renderWorkshop('all'), invoicing:()=>renderInvoicing('all'),
+  allocation:()=>renderAllocation('auto'), workanalysis:()=>renderWorkAnalysis('all'),
+  reports:()=>renderReport('overview'), livetracking:renderTracking,
+  usermgmt:renderUserMgmt, settings:renderSettings,
+};
+
+function toggleSidebar() { document.body.classList.toggle('sidebar-open'); }
+
+/* ─────────────────────────────────────────────────────────────────
+   § 9  DASHBOARD
+────────────────────────────────────────────────────────────────── */
+function renderDashboard() {
+  const db=state.db;
+  const trucks=db.trucks, trips=db.trips, maint=db.maintenance;
+  const avail=trucks.filter(t=>t.status==='available').length;
+  const onTrip=trucks.filter(t=>t.status==='on_trip').length;
+  const brkdown=trucks.filter(t=>t.status==='breakdown').length;
+  const activeT=trips.filter(t=>t.status==='active').length;
+  
+  const kpiRow=document.getElementById('kpiRow');
+  if(kpiRow){
+    kpiRow.innerHTML=`${kpiCard('Fleet Size',trucks.length,'','kpi-gold')} ${kpiCard('Available',avail,'Ready to deploy','kpi-green')} ${kpiCard('On Trip',onTrip,'Currently active','kpi-gold')} ${kpiCard('Breakdown',brkdown,'Requires attention','kpi-red')} ${kpiCard('Active Trips',activeT,'In progress','kpi-blue')} ${kpiCard('Drivers',db.drivers.filter(d=>d.status==='on_trip').length,'On duty','kpi-orange')}`;
+  }
+  
+  const statusGroups=[ ['available','Available','var(--green)'], ['on_trip','On Trip','var(--gold)'], ['maintenance','Maintenance','var(--amber)'], ['breakdown','Breakdown','var(--red)'], ['off_duty','Off Duty','var(--text-3)'] ];
+  const fBars=document.getElementById('fleetStatusBars');
+  if(fBars){
+    fBars.innerHTML=statusGroups.map(([st,lbl,col])=>{
+      const cnt=trucks.filter(t=>t.status===st).length;
+      const pct=trucks.length?Math.round(cnt/trucks.length*100):0;
+      return `<div class="fleet-status-bar" style="padding:10px 14px"><div class="fsb-row"><span class="fsb-label">${lbl}</span><span class="fsb-count">${cnt} / ${trucks.length}</span></div><div class="fsb-track"><div class="fsb-fill" style="width:${pct}%;background:${col}"></div></div></div>`;
+    }).join('');
+  }
+  
+  const fm=document.getElementById('fleetStatusMeta');
+  if(fm) fm.textContent= `${trucks.length} total`;
+  
+  const liveT=trips.filter(t=>t.status==='active');
+  const ltc=document.getElementById('liveTripsCount');
+  if(ltc) ltc.textContent= `${liveT.length} active`;
+  
+  const lt=document.getElementById('liveTrips');
+  if(lt){
+    lt.innerHTML=liveT.length
+      ? liveT.map(t=>`<div class="live-trip-row" onclick="showTripDetail('${t.id}')"><div class="ltr-dot" style="background:${t.status==='delayed'?'var(--amber)':'var(--green)'}"></div><div class="ltr-info"><div class="ltr-route">${t.origin} → ${t.dest}</div><div class="ltr-meta">${truckName(t.truckId)} · ${t.container} · ETA ${fmtTime(t.eta)}</div></div>${sbadge(t.status)}</div>`).join('')
+      : '<div class="empty-state"><div class="empty-state-label">No active trips</div></div>';
+  }
+  
+  renderActivityFeed('all');
+  
+  const open=maint.filter(m=>m.status!=='resolved').sort((a,b)=>(['critical','high','medium','low'].indexOf(a.priority))-(['critical','high','medium','low'].indexOf(b.priority)));
+  const ma=document.getElementById('maintAlerts');
+  if(ma){
+    ma.innerHTML=open.length
+      ? open.map(m=>`<div class="maint-alert-row" onclick="showSection('maintenance',null)"><div style="width:8px;height:8px;border-radius:50%;background:${m.priority==='critical'?'var(--red)':m.priority==='high'?'var(--amber)':'var(--gold)'}"></div><div style="flex:1"><div style="font-size:11.5px;font-weight:600;color:var(--text)">${truckName(m.truckId)}</div><div style="font-size:10.5px;color:var(--text-3)">${m.desc.slice(0,55)}…</div></div>${sbadge(m.status)}</div>`).join('')
+      : '<div class="empty-state"><div class="empty-state-icon">✓</div><div class="empty-state-label">No open issues</div></div>';
+  }
+}
+
+function kpiCard(label,val,sub='',cls='kpi-gold') {
+  return `<div class="kpi-card ${cls}"><div class="kpi-value">${val}</div><div class="kpi-label">${label}</div>${sub?`<div class="kpi-sub">${sub}</div>`:''}</div>`;
+}
+
+let _activityFilter='all';
+function filterActivity(f,btn){ _activityFilter=f; document.querySelectorAll('#sec-dashboard .pill').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderActivityFeed(f); }
+
+function renderActivityFeed(f){
+  const db=state.db;
+  const all=[];
+  db.trips.forEach(t=>{ all.push({ type:'dispatch', icon:'🚛', msg: `Dispatched ${t.container} — ${t.origin} → ${t.dest}`, time:t.startTime }); if(t.status==='completed') all.push({ type:'return', icon:'✅', msg: `Completed — ${truckName(t.truckId)} returned`, time:t.eta }); });
+  db.maintenance.forEach(m=>{ if(m.status==='open') all.push({ type:'issue', icon:'️', msg: `Issue logged — ${truckName(m.truckId)}: ${m.type}`, time:m.date }); });
+  const filtered=f==='all'?all:all.filter(a=>a.type===f);
+  filtered.sort((a,b)=>new Date(b.time)-new Date(a.time));
+  const al=document.getElementById('activityList');
+  if(al){
+    al.innerHTML=filtered.slice(0,12).map(a=>`<div class="activity-row"><div class="act-icon">${a.icon}</div><div style="flex:1;font-size:11.5px;color:var(--text-2)">${a.msg}</div><div class="act-time">${timeAgo(a.time)}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No activity</div></div>';
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   § 10  TRUCKS
+────────────────────────────────────────────────────────────────── */
+let _truckFilter='all';
+function filterTrucks(f,btn){ _truckFilter=f; document.querySelectorAll('#sec-trucks .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderTrucks(f); }
+
+function renderTrucks(f){
+  const trucks=f==='all'?state.db.trucks:state.db.trucks.filter(t=>t.status===f);
+  const grid=document.getElementById('truckGrid');
+  if(!grid) return;
+  grid.innerHTML=trucks.map(t=>`<div class="truck-card" onclick="showTruckDetail('${t.id}')"><div class="truck-card-inner"><div class="truck-card-status-bar ${t.status}"></div><div class="truck-card-body"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="truck-card-reg">${t.reg}</div><div class="truck-card-make">${t.make} · ${t.year}</div><div class="truck-card-type">${t.type}</div></div>${sbadge(t.status)}</div><div class="truck-card-stats"><div class="ts"><b>${fmt(t.mileage)} km</b>Odometer</div><div class="ts"><b>${t.driver?driverName(t.driver).split(' ')[0]:'—'}</b>Driver</div><div class="ts"><b>${t.colour}</b>Colour</div><div class="fuel-bar-outer"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3);margin-top:6px"><span>Fuel</span><span style="color:${fuelColour(t.fuelPct)}">${t.fuelPct}%</span></div><div class="fuel-bar"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🚛</div><div class="empty-state-label">No trucks match this filter</div></div>';
+}
+
+function showTruckDetail(id) {
+  const t = state.db.trucks.find(t=>t.id===id);
+  if (!t) return;
+  const trips = state.db.trips.filter(tr=>tr.truckId===id).slice(-5);
+  const maint = state.db.maintenance.filter(m=>m.truckId===id);
+  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`: ''}`);
+}
+
+function quickSetTruckStatus(id, status) {
+  const t = state.db.trucks.find(t=>t.id===id);
+  if (!t) return;
+  t.status = status;
+  scheduleSave();
+  addAudit(state.profile.username, 'Status Override', `${t.reg} → ${status}`);
+  buildBadges();
+  closeModal();
+  renderTrucks(_truckFilter);
+  toast(`${t.reg} status set to ${status}`, 'success');
+}
+
+function showAddTruckModal() {
+  openModal('Add New Truck', `<div class="form-row-2"><div class="fg"><label>Registration</label><input id="nt_reg" placeholder="KDA 000A"/></div><div class="fg"><label>Make / Model</label><input id="nt_make" placeholder="ISUZU FVZ"/></div></div><div class="form-row-2"><div class="fg"><label>Type</label><select id="nt_type"><option>Prime Mover</option><option>Flatbed</option><option>Tipper</option><option>Tanker</option><option>Lowbed</option></select></div><div class="fg"><label>Year</label><input id="nt_year" type="number" placeholder="${new Date().getFullYear()}"/></div></div><div class="form-row-2"><div class="fg"><label>Colour</label><input id="nt_colour" placeholder="White"/></div><div class="fg"><label>Fuel Level %</label><input id="nt_fuel" type="number" placeholder="100" min="0" max="100"/></div></div><div class="fg"><label>Odometer (km)</label><input id="nt_odo" type="number" placeholder="0"/></div><div class="fg"><label>Notes</label><textarea id="nt_notes" rows="2" placeholder="Any notes…"></textarea></div><button class="submit-btn" onclick="saveTruck()">Add Truck →</button>`);
+}
+
+function saveTruck() {
+  const reg   = document.getElementById('nt_reg').value.trim().toUpperCase();
+  const make  = document.getElementById('nt_make').value.trim();
+  if (!reg || !make) { toast('Registration and make are required', 'error'); return; }
+  if (!/^[A-Z0-9\s]{3,10}$/.test(reg)) { toast('Invalid registration format. Use letters and numbers only.', 'error'); return; }
+  const t = {
+    id: uid('TRK'), reg, make,
+    type:    document.getElementById('nt_type').value,
+    year:    parseInt(document.getElementById('nt_year').value)||new Date().getFullYear(),
+    colour:  document.getElementById('nt_colour').value.trim()||'White',
+    fuelPct: Math.min(100, Math.max(0, parseInt(document.getElementById('nt_fuel').value)||100)),
+    mileage: Math.max(0, parseInt(document.getElementById('nt_odo').value)||0),
+    status:  'available',
+    driver:  null,
+    lastService: new Date().toISOString(),
+    nextService: new Date(Date.now()+90*86400000).toISOString(),
+    notes:   sanitize(document.getElementById('nt_notes').value.trim()),
+    img:'',
+    licencePlate: reg,
+    vin: '',
+  };
+  state.db.trucks.push(t);
+  scheduleSave();
+  addAudit(state.profile.username, 'Truck Added', `${reg} — ${make}`);
+  buildBadges();
+  closeModal();
+  renderTrucks('all');
+  toast(`${reg} added to fleet`, 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 11  DRIVERS
+────────────────────────────────────────────────────────────────── */
+let _driverFilter='all';
+function filterDrivers(f,btn){ _driverFilter=f; document.querySelectorAll('#sec-drivers .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderDrivers(f); }
+
+function renderDrivers(f){
+  const drivers=f==='all'?state.db.drivers:state.db.drivers.filter(d=>d.status===f);
+  const tbody=document.getElementById('driverTableBody');
+  if(!tbody) return;
+  tbody.innerHTML=drivers.map(d=>`<tr onclick="showDriverDetail('${d.id}')"><td><div class="driver-cell"><div class="driver-avatar">${initials(d.name)}</div><div><div class="driver-name">${d.name}</div><div class="driver-id">${d.id}</div></div></div></td><td class="mono">${d.phone}</td><td class="mono">${d.licence}</td><td>${d.truckId ? `<span class="mono" style="color:var(--gold)">${state.db.trucks.find(t=>t.id===d.truckId)?.reg||'—'}</span>`: '—'}</td><td>${sbadge(d.status)}</td><td style="text-align:center;font-family:var(--font-mono)">${d.tripsToday}</td><td class="mono" style="font-size:10px">${d.load||'—'}</td><td style="font-size:11px;color:var(--text-3)">${d.location}</td><td><button class="tbl-btn" onclick="event.stopPropagation();showDriverDetail('${d.id}')">View</button></td></tr>`).join('')||`<tr><td colspan="9" class="empty-td">No drivers match this filter</td></tr>`;
+}
+
+function showDriverDetail(id) {
+  const d = state.db.drivers.find(d=>d.id===id);
+  if (!d) return;
+  const licDays = Math.round((new Date(d.licenceExp)-Date.now())/86400000);
+  const licWarn = licDays < 90;
+  openModal(`Driver — ${d.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div style="width:52px;height:52px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--gold)">${initials(d.name)}</div><div><div style="font-size:16px;font-weight:700;color:var(--text)">${d.name}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">${d.id}</div></div><div style="margin-left:auto">${sbadge(d.status)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Phone</label><div class="mono" style="font-size:12px;color:var(--text)">${d.phone}</div></div><div class="fg" style="margin:0"><label>Licence</label><div class="mono" style="font-size:12px;color:var(--text)">${d.licence}</div></div><div class="fg" style="margin:0"><label>Licence Expiry</label><div style="font-size:12px;color:${licWarn?'var(--amber)':'var(--text)'};font-weight:${licWarn?'700':'400'}">${fmtDate(d.licenceExp)}${licWarn?' ⚠':''}</div></div><div class="fg" style="margin:0"><label>Trips Today</label><div class="mono" style="font-size:16px;color:var(--gold);font-weight:700">${d.tripsToday}</div></div><div class="fg" style="margin:0"><label>Assigned Truck</label><div style="font-size:12px;color:var(--text)">${d.truckId?truckName(d.truckId):'Not assigned'}</div></div><div class="fg" style="margin:0"><label>Current Load</label><div class="mono" style="font-size:11px;color:var(--text)">${d.load||'None'}</div></div><div class="fg" style="margin:0"><label>Location</label><div style="font-size:12px;color:var(--text)">${d.location}</div></div><div class="fg" style="margin:0"><label>Rating</label><div style="font-size:12px;color:var(--gold)">⭐ ${d.rating||0}/5.0</div></div><div class="fg" style="margin:0"><label>ID No.</label><div class="mono" style="font-size:12px;color:var(--text)">${d.idNo||'—'}</div></div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','off_duty','suspended'].map(s=>`<button class="filter-btn${d.status===s?' active':''}" onclick="quickSetDriverStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`:''}`);
+}
+
+function quickSetDriverStatus(id, status) {
+  const d = state.db.drivers.find(d=>d.id===id);
+  if (!d) return;
+  d.status = status;
+  scheduleSave();
+  addAudit(state.profile.username, 'Driver Status Override', `${d.name} → ${status}`);
+  closeModal();
+  renderDrivers(_driverFilter);
+  toast(`${d.name} status updated`, 'success');
+}
+
+function showAddDriverModal() {
+  openModal('Add New Driver', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="nd_name" placeholder="John Doe"/></div><div class="fg"><label>Phone</label><input id="nd_phone" placeholder="+254 7XX XXX XXX"/></div></div><div class="form-row-2"><div class="fg"><label>Licence No.</label><input id="nd_lic" placeholder="DL-A0000"/></div><div class="fg"><label>Licence Expiry</label><input id="nd_licexp" type="date"/></div></div><div class="form-row-2"><div class="fg"><label>ID Number</label><input id="nd_idno" placeholder="ID number"/></div><div class="fg"><label>Rating</label><input id="nd_rating" type="number" placeholder="4.0" min="0" max="5" step="0.1"/></div></div><button class="submit-btn" onclick="saveDriver()">Add Driver →</button>`);
+}
+
+function saveDriver() {
+  const name = document.getElementById('nd_name').value.trim();
+  const phone= document.getElementById('nd_phone').value.trim();
+  const lic  = document.getElementById('nd_lic').value.trim().toUpperCase();
+  if (!name) { toast('Full name is required', 'error'); return; }
+  if (!validatePhone(phone)) { toast('Invalid phone number format', 'error'); return; }
+  if (!lic) { toast('Licence number is required', 'error'); return; }
+  const d = {
+    id: uid('DRV'),
+    name,
+    initials: initials(name),
+    phone,
+    licence: lic,
+    licenceExp: document.getElementById('nd_licexp').value||new Date(Date.now()+365*86400000).toISOString(),
+    status:'available',
+    truckId:null,
+    tripsToday:0,
+    load:null,
+    location:'Gargo Yard',
+    idNo: document.getElementById('nd_idno').value.trim()||'',
+    rating: Math.min(5, Math.max(0, parseFloat(document.getElementById('nd_rating').value)||4.0)),
+  };
+  state.db.drivers.push(d);
+  scheduleSave();
+  addAudit(state.profile.username, 'Driver Added', `${name}`);
+  closeModal();
+  renderDrivers('all');
+  toast(`${name} added`, 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 12  TRIPS
+────────────────────────────────────────────────────────────────── */
+let _tripFilter='active';
+function filterTrips(f,btn){ _tripFilter=f; document.querySelectorAll('#sec-trips .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderTrips(f); }
+
+function renderTrips(f){
+  let trips=state.db.trips;
+  if(f==='active')    trips=trips.filter(t=>t.status==='active');
+  else if(f==='completed') trips=trips.filter(t=>t.status==='completed');
+  else if(f==='delayed')   trips=trips.filter(t=>t.status==='delayed');
+  const el=document.getElementById('tripsList');
+  if(!el) return;
+  el.innerHTML=trips.map(t=>`<div class="trip-card status-${t.status}" onclick="showTripDetail('${t.id}')"><div class="trip-card-head"><div class="trip-route">${t.origin}<span class="arrow">→</span>${t.dest}</div>${sbadge(t.status)}</div><div class="trip-meta"><span>🚛 ${truckName(t.truckId)}</span><span>👤 ${driverName(t.driverId)}</span><span class="mono" style="font-size:10.5px;color:var(--gold)">${t.container}</span><span>${t.ctype} · ${t.workType}</span><span>🕐 Started ${timeAgo(t.startTime)} · ETA ${fmtTime(t.eta)}</span><span>${t.distance}km · ${sbadge(t.priority.toLowerCase())}</span></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🗺️</div><div class="empty-state-label">No trips in this filter</div></div>';
+}
+
+function showTripDetail(id) {
+  const t = state.db.trips.find(t=>t.id===id);
+  if (!t) return;
+  const line = state.db.shippingLines.find(l=>l.id===t.shippingLine);
+  openModal(`Trip — ${t.container}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Update Status</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['active','delayed','completed'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTripStatus('${id}','${s}')">${s}</button>`).join('')}</div></div>`:''}`);
+}
+
+function quickSetTripStatus(id, status) {
+  const t = state.db.trips.find(t=>t.id===id);
+  if (!t) return;
+  const old = t.status;
+  t.status = status;
+  if (status === 'completed') {
+    const truck = state.db.trucks.find(tr=>tr.id===t.truckId);
+    const driver= state.db.drivers.find(d=>d.id===t.driverId);
+    if (truck && truck.status ==='on_trip')  truck.status  = 'available';
+    if (driver && driver.status==='on_trip')  driver.status = 'available';
+    if (driver) { driver.load = null; driver.tripsToday++; }
+  }
+  scheduleSave();
+  buildBadges();
+  addAudit(state.profile.username, 'Trip Status Update', `${t.container} ${old} → ${status}`);
+  closeModal();
+  renderTrips(_tripFilter);
+  toast(`Trip updated to ${status}`, 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 13  DISPATCH CONSOLE
+────────────────────────────────────────────────────────────────── */
+function renderDispatch() {
+  populateDispatchSelects();
+  renderDispatchQueue();
+}
+
+function populateDispatchSelects() {
+  const avlTrucks  = state.db.trucks.filter(t=>t.status==='available');
+  const avlDrivers = state.db.drivers.filter(d=>d.status==='available');
+  fillSelect('d_truck',  avlTrucks,  t=>[t.id, `${t.reg} — ${t.make} (Fuel: ${t.fuelPct}%)`]);
+  fillSelect('d_driver', avlDrivers, d=>[d.id, d.name]);
+  fillSelect('d_line',   state.db.shippingLines.filter(l=>l.active), l=>[l.id, `${l.code} — ${l.name}`]);
+}
+
+function fillSelect(id, arr, mapFn) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `<option value="">Select…</option>` + arr.map(i=>{ const [v,l]=mapFn(i); return `<option value="${v}">${l}</option>`; }).join('');
+}
+
+function renderDispatchQueue() {
+  const pending = state.db.trips.filter(t=>t.status==='active').slice(-8).reverse();
+  const container = document.getElementById('dispatchQueue');
+  if (!container) return;
+  container.innerHTML = `<div class="panel"><div class="panel-head"><span class="panel-title">Dispatch Queue</span><span class="panel-meta">${pending.length} active</span></div><div>${pending.map(t=>`<div class="dispatch-queue-item" onclick="showTripDetail('${t.id}')"><div class="dqi-ref">${t.container.slice(-7)}</div><div class="dqi-route"><div style="font-size:12px;font-weight:600;color:var(--text)">${t.origin}→${t.dest}</div><div style="font-size:10px;color:var(--text-3)">${truckName(t.truckId)}</div></div>${sbadge(t.status)}<div class="dqi-time">${timeAgo(t.startTime)}</div></div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No dispatches yet</div></div>'}</div></div>`;
+}
+
+function createDispatch() {
+  const truck  = document.getElementById('d_truck').value;
+  const driver = document.getElementById('d_driver').value;
+  const cont   = document.getElementById('d_container').value.trim().toUpperCase();
+  const origin = document.getElementById('d_origin').value.trim();
+  const dest   = document.getElementById('d_dest').value.trim();
+  const dist   = parseInt(document.getElementById('d_distance').value)||0;
+  if (!truck || !driver || !cont || !origin || !dest) {
+    toast('Fill in all required fields', 'error');
+    return;
+  }
+  if (!/^[A-Z0-9]{4,12}$/.test(cont)) {
+    toast('Invalid container number format. Use letters and numbers only.', 'error');
+    return;
+  }
+  const ctype    = document.getElementById('d_ctype').value;
+  const workType = document.getElementById('d_worktype').value;
+  const line     = document.getElementById('d_line').value;
+  const priority = document.getElementById('d_priority').value;
+  const ref      = document.getElementById('d_ref').value.trim() || `REF-${Date.now().toString().slice(-6)}`;
+  const notes    = sanitize(document.getElementById('d_notes').value.trim());
+  const etaMs = Date.now() + (dist/35)*3600000;
+  const trip = {
+    id: uid('TRIP'), truckId: truck, driverId: driver, container: cont,
+    ctype, workType, origin, dest, shippingLine: line,
+    status: 'active', startTime: new Date().toISOString(),
+    eta: new Date(etaMs).toISOString(), distance: dist, priority, notes, ref,
+  };
+  state.db.trips.push(trip);
+  const t = state.db.trucks.find(t=>t.id===truck);
+  const d = state.db.drivers.find(d=>d.id===driver);
+  if (t) t.status = 'on_trip';
+  if (d) { d.status='on_trip'; d.load=cont; d.truckId=truck; }
+  scheduleSave();
+  buildBadges();
+  addAudit(state.profile.username, 'Dispatch Created', `${cont} — ${origin} → ${dest}`);
+  toast(`Dispatch created — ${cont}`, 'success');
+  renderDispatch();
+}
+
+function switchDispatchTab(tab, btn) {
+  document.getElementById('dispatchTabSingle').style.display = tab==='single' ? 'block' : 'none';
+  document.getElementById('dispatchTabBulk').style.display   = tab==='bulk'   ? 'block' : 'none';
+  document.querySelectorAll('#sec-dispatch .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function previewContainerImg(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { toast('Please select an image file', 'error'); return; }
+  if (file.size > 2*1024*1024) { toast('Image too large. Max 2MB.', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('containerImgThumb').src = ev.target.result;
+    document.getElementById('containerImgPreview').style.display = 'block';
+    document.getElementById('containerImgLabel').textContent = file.name;
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearContainerImg() {
+  document.getElementById('d_container_img').value = '';
+  document.getElementById('containerImgThumb').src = '';
+  document.getElementById('containerImgPreview').style.display = 'none';
+  document.getElementById('containerImgLabel').textContent = 'Upload container photo';
+}
+
+function handleBulkDrop(e) {
+  e.preventDefault();
+  document.getElementById('bulkDispatchDrop').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) processBulkFile(file);
+}
+
+function handleBulkFile(e) {
+  const file = e.target.files[0];
+  if (file) processBulkFile(file);
+}
+
+function processBulkFile(file) {
+  if (file.size > 5*1024*1024) { toast('File too large. Max 5MB.', 'error'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let rows = [];
+      if (file.name.endsWith('.json')) {
+        rows = JSON.parse(e.target.result);
+      } else {
+        const lines = e.target.result.split('\n').filter(l=>l.trim());
+        const headers = lines[0].split(',').map(h=>h.trim());
+        rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim()])); });
+      }
+      showBulkPreview(rows);
+    } catch(err) { toast('Could not parse file — check format', 'error'); }
+  };
+  reader.readAsText(file);
+}
+
+function showBulkPreview(rows) {
+  if (!rows.length) return;
+  const keys = Object.keys(rows[0]);
+  const tbl  = document.getElementById('bulkPreviewTable');
+  tbl.querySelector('thead').innerHTML = `<tr>${keys.map(k=>`<th>${k}</th>`).join('')}</tr>`;
+  tbl.querySelector('tbody').innerHTML = rows.slice(0,10).map(r=>`<tr>${keys.map(k=>`<td>${r[k]||''}</td>`).join('')}</tr>`).join('');
+  document.getElementById('bulkRowCount').textContent = `${rows.length} rows`;
+  document.getElementById('bulkDispatchPreview').style.display = 'block';
+  document.getElementById('bulkDispatchPreview').dataset.rows = JSON.stringify(rows);
+}
+
+function processBulkDispatch() {
+  const rows = JSON.parse(document.getElementById('bulkDispatchPreview').dataset.rows||'[]');
+  let created = 0;
+  rows.forEach(r=>{
+    const truck  = state.db.trucks.find(t=>t.reg===r.truck||t.id===r.truck);
+    const driver = state.db.drivers.find(d=>d.name===r.driver||d.id===r.driver);
+    if (!r.container) return;
+    const trip = {
+      id: uid('TRIP'), container: r.container.toUpperCase(),
+      truckId: truck?.id||'', driverId: driver?.id||'',
+      ctype: r.ctype||'20ft Dry', workType: r.workType||'Port → Depot',
+      origin: r.origin||'', dest: r.dest||'', distance: parseInt(r.distance)||0,
+      shippingLine:'', priority:'Normal', notes:'Bulk import',
+      ref: `BULK-${Date.now()}-${created}`,
+      status:'active', startTime:new Date().toISOString(), eta:new Date(Date.now()+4*3600000).toISOString(),
+    };
+    state.db.trips.push(trip);
+    if (truck)  truck.status  = 'on_trip';
+    if (driver) { driver.status='on_trip'; driver.load=r.container; }
+    created++;
+  });
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Bulk Dispatch', `${created} dispatches imported`);
+  toast(`${created} dispatches created`, 'success');
+  document.getElementById('bulkDispatchPreview').style.display = 'none';
+  renderDispatchQueue();
+}
+
+function downloadBulkTemplate() {
+  const csv = 'container,truck,driver,origin,destination,ctype,workType,distance\nMSCU0000001,KDA 001A,James Otieno,Kilindini Port,Shimanzi ICD,40ft Dry,Port → Depot,18';
+  const a   = document.createElement('a');
+  a.href     = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
+  a.download = 'gargo_bulk_template.csv';
+  a.click();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 14  MAINTENANCE
+────────────────────────────────────────────────────────────────── */
+let _maintFilter='all';
+function filterMaint(f,btn){ _maintFilter=f; document.querySelectorAll('#sec-maintenance .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderMaint(f); }
+
+function renderMaint(f){
+  let items=state.db.maintenance;
+  if(f!=='all') items=items.filter(m=>m.status===f);
+  items=items.sort((a,b)=>{ const p=['critical','high','medium','low']; return p.indexOf(a.priority)-p.indexOf(b.priority); });
+  const el=document.getElementById('maintList');
+  if(!el) return;
+  el.innerHTML=items.map(m=>`<div class="maint-card p-${m.priority}" onclick="showMaintDetail('${m.id}')"><div class="maint-card-head"><div><div style="font-size:12px;font-weight:700;color:var(--text)">${truckName(m.truckId)}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:2px">${m.type} · ${fmtDate(m.date)}</div></div><div style="display:flex;gap:6px;align-items:center">${sbadge(m.priority)} ${sbadge(m.status)}</div></div><div class="maint-desc">${m.desc}</div><div class="maint-meta">Tech: ${m.tech||'Unassigned'} · Cost: ${m.cost?fmtKsh(m.cost):'TBC'}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🔧</div><div class="empty-state-label">No maintenance records</div></div>';
+}
+
+function showMaintDetail(id) {
+  const m = state.db.maintenance.find(m=>m.id===id);
+  if (!m) return;
+  openModal(`Maintenance — ${truckName(m.truckId)}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(m.truckId)}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${m.type}</div></div><div class="fg" style="margin:0"><label>Priority</label>${sbadge(m.priority)}</div><div class="fg" style="margin:0"><label>Status</label>${sbadge(m.status)}</div><div class="fg" style="margin:0"><label>Date</label><div style="font-size:12px;color:var(--text)">${fmtDate(m.date)}</div></div><div class="fg" style="margin:0"><label>Cost (KSh)</label><div style="font-size:12px;color:var(--gold);font-weight:700">${m.cost?fmt(m.cost):'TBC'}</div></div><div class="fg" style="margin:0"><label>Technician</label><div style="font-size:12px;color:var(--text)">${m.tech||'Unassigned'}</div></div>${m.resolvedDate?`<div class="fg" style="margin:0"><label>Resolved</label><div style="font-size:12px;color:var(--green)">${fmtDate(m.resolvedDate)}</div></div>`:''}</div><div class="fg" style="margin-bottom:14px"><label>Description</label><div style="font-size:12px;color:var(--text-2);line-height:1.6;padding:10px;background:var(--surface);border-radius:5px">${m.desc}</div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Update Status</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['open','in_progress','resolved'].map(s=>`<button class="filter-btn${m.status===s?' active':''}" onclick="updateMaintStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`:''}`);
+}
+
+function updateMaintStatus(id, status) {
+  const m = state.db.maintenance.find(m=>m.id===id);
+  if (!m) return;
+  m.status = status;
+  if (status==='resolved') m.resolvedDate = new Date().toISOString();
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Maintenance Update', `${truckName(m.truckId)} → ${status}`);
+  closeModal();
+  renderMaint(_maintFilter);
+  toast('Maintenance record updated', 'success');
+}
+
+function showMaintModal() {
+  openModal('Log Maintenance Issue', `<div class="fg"><label>Truck</label><select id="m_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg} — ${t.make}</option>`).join('')}</select></div><div class="form-row-2"><div class="fg"><label>Issue Type</label><select id="m_type"><option>Breakdown</option><option>Scheduled</option><option>Preventive</option><option>Electrical</option><option>Tyre</option><option>Engine</option><option>Brake</option><option>Suspension</option></select></div><div class="fg"><label>Priority</label><select id="m_priority"><option value="critical">Critical</option><option value="high">High</option><option value="medium" selected>Medium</option><option value="low">Low</option></select></div></div><div class="fg"><label>Description</label><textarea id="m_desc" rows="3" placeholder="Describe the issue…"></textarea></div><div class="form-row-2"><div class="fg"><label>Technician</label><input id="m_tech" placeholder="Tech name"/></div><div class="fg"><label>Estimated Cost (KSh)</label><input id="m_cost" type="number" placeholder="0"/></div></div><button class="submit-btn" onclick="saveMaint()">Log Issue →</button>`);
+}
+
+function saveMaint() {
+  const desc = document.getElementById('m_desc').value.trim();
+  if (!desc) { toast('Description required', 'error'); return; }
+  const m = {
+    id: uid('MNT'), truckId: document.getElementById('m_truck').value,
+    type: document.getElementById('m_type').value, priority: document.getElementById('m_priority').value,
+    desc, tech: document.getElementById('m_tech').value.trim(),
+    cost: Math.max(0, parseInt(document.getElementById('m_cost').value)||0),
+    status:'open', date: new Date().toISOString(), resolvedDate: null,
+  };
+  state.db.maintenance.push(m);
+  const t = state.db.trucks.find(t=>t.id===m.truckId);
+  if (t && m.priority==='critical') t.status='breakdown';
+  else if (t && (m.priority==='high'||m.priority==='medium') && t.status==='available') t.status='maintenance';
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Maintenance Logged', `${truckName(m.truckId)} — ${m.type}`);
+  closeModal(); renderMaint('all');
+  toast('Issue logged', 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 15  FUEL LOG
+────────────────────────────────────────────────────────────────── */
+function renderFuel() {
+  fillSelect('f_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.make}`]);
+  fillSelect('f_driver', state.db.drivers, d=>[d.id, d.name]);
+  renderFuelTable();
+  renderFuelSummary();
+}
+
+function renderFuelTable() {
+  const logs = [...state.db.fuel].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const tbody = document.getElementById('fuelTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td>${state.db.trucks.find(t=>t.id===f.truckId)?.reg||f.truckId}</td><td>${driverName(f.driverId)}</td><td class="mono" style="text-align:right">${fmt(f.litres)} L</td><td class="mono" style="text-align:right">${fmt(f.pricePerLitre)}</td><td class="mono" style="text-align:right;color:var(--gold);font-weight:700">${fmtKsh(f.litres*f.pricePerLitre)}</td><td style="color:var(--text-3);font-size:11px">${f.station}</td></tr>`).join('') || `<tr><td colspan="7" class="empty-td">No fuel logs</td></tr>`;
+}
+
+function renderFuelSummary() {
+  const logs = state.db.fuel;
+  const totalL   = logs.reduce((s,f)=>s+f.litres, 0);
+  const totalKsh = logs.reduce((s,f)=>s+f.litres*f.pricePerLitre, 0);
+  const avgPpl   = logs.length ? totalKsh/totalL : 0;
+  const el = document.getElementById('fuelSummary');
+  if (!el) return;
+  el.innerHTML = `<div class="fuel-summary-row"><span class="fsr-label">Total Litres</span><span class="fsr-val">${fmt(totalL)} L</span></div><div class="fuel-summary-row"><span class="fsr-label">Total Cost</span><span class="fsr-val">${fmtKsh(totalKsh)}</span></div><div class="fuel-summary-row"><span class="fsr-label">Avg Price/Litre</span><span class="fsr-val">KSh ${avgPpl.toFixed(2)}</span></div><div class="fuel-summary-row"><span class="fsr-label">Fill-ups Logged</span><span class="fsr-val">${logs.length}</span></div>`;
+}
+
+function addFuelLog() {
+  const truck  = document.getElementById('f_truck').value;
+  const driver = document.getElementById('f_driver').value;
+  const litres = parseFloat(document.getElementById('f_litres').value)||0;
+  const price  = parseFloat(document.getElementById('f_price').value)||0;
+  if (!truck || litres <=0 || price <=0) { toast('Truck, litres and price required', 'error'); return; }
+  if (litres > 1000) { toast('Litres exceed reasonable limit (1000L)', 'error'); return; }
+  const log = {
+    id: uid('FUEL'), truckId: truck, driverId: driver,
+    date: new Date().toISOString(), litres, pricePerLitre: price,
+    station: sanitize(document.getElementById('f_station').value.trim())||'Unknown',
+    odometer: Math.max(0, parseInt(document.getElementById('f_odo').value)||0),
+    receipt: document.getElementById('f_receipt').value.trim()||uid('RCP'),
+  };
+  state.db.fuel.push(log);
+  const t = state.db.trucks.find(t=>t.id===truck);
+  if (t) { t.fuelPct = Math.min(100, Math.round((litres/400)*100 + t.fuelPct)); t.mileage = log.odometer||t.mileage; }
+  scheduleSave();
+  addAudit(state.profile.username, 'Fuel Log', `${truckName(truck)} — ${litres}L at KSh ${price}/L`);
+  ['f_litres','f_price','f_station','f_odo','f_receipt'].forEach(id=>{ const el=document.getElementById(id); if(el)el.value=''; });
+  renderFuelTable(); renderFuelSummary();
+  toast(`Fuel log saved — ${fmtKsh(litres*price)}`, 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 16  SHUTOUT
+────────────────────────────────────────────────────────────────── */
+let _shutoutFilter='all';
+function filterShutout(f,btn){ _shutoutFilter=f; document.querySelectorAll('#sec-shutout .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderShutout(f); }
+
+function renderShutout(f){
+  let items=f==='all'?state.db.shutouts:state.db.shutouts.filter(s=>s.status===f);
+  const el=document.getElementById('shutoutList');
+  if(!el) return;
+  el.innerHTML=items.map(s=>`<div class="shutout-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div class="mono" style="font-size:13px;color:var(--gold)">${s.container}</div><div style="font-size:11px;color:var(--text-3);margin-top:2px">${s.vessel} · Voyage ${s.voyage}</div></div>${sbadge(s.status)}</div><div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">Reason: ${s.reason}</div><div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9px;color:var(--text-3)"><span>${fmtDate(s.date)}</span><span>${truckName(s.truckId)}</span></div>${s.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:6px;font-style:italic">${s.notes}</div>`:''}</div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-label">No shutout records</div></div>';
+}
+
+function showAddShutoutModal() {
+  openModal('Flag Shutout Container', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="sh_cont" placeholder="MSCU0000000"/></div><div class="fg"><label>Shipping Line</label><select id="sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="sh_vessel" placeholder="MSC VESSEL NAME"/></div><div class="fg"><label>Voyage No.</label><input id="sh_voyage" placeholder="VA-001"/></div></div><div class="fg"><label>Reason</label><input id="sh_reason" placeholder="Why was this shutout?"/></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="sh_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="sh_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="sh_notes" rows="2"></textarea></div><button class="submit-btn" onclick="saveShutout()">Flag Shutout →</button>`);
+}
+
+function saveShutout() {
+  const cont = document.getElementById('sh_cont').value.trim().toUpperCase();
+  if (!cont) { toast('Container number required', 'error'); return; }
+  if (!/^[A-Z0-9]{4,12}$/.test(cont)) { toast('Invalid container format', 'error'); return; }
+  state.db.shutouts.push({
+    id: uid('SHT'), container: cont,
+    line: document.getElementById('sh_line').value,
+    vessel: sanitize(document.getElementById('sh_vessel').value.trim()),
+    voyage: sanitize(document.getElementById('sh_voyage').value.trim()),
+    reason: sanitize(document.getElementById('sh_reason').value.trim()),
+    truckId:  document.getElementById('sh_truck').value,
+    driverId: document.getElementById('sh_driver').value,
+    notes: sanitize(document.getElementById('sh_notes').value.trim()),
+    date: new Date().toISOString(), status:'open',
+  });
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Shutout Flagged', cont);
+  closeModal(); renderShutout('all');
+  toast('Shutout flagged', 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 17  INTERCHANGE
+────────────────────────────────────────────────────────────────── */
+let _icFilter='all';
+function filterInterchange(f,btn){ _icFilter=f; document.querySelectorAll('#sec-interchange .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderInterchange(f); }
+
+function renderInterchange(f){
+  let items=f==='all'?state.db.interchange:state.db.interchange.filter(i=>i.status===f);
+  const el=document.getElementById('interchangeList');
+  if(!el) return;
+  el.innerHTML=items.map(ic=>`<div class="ic-card"><div class="ic-card-img-placeholder"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${truckName(ic.truck)} · ${driverName(ic.driver)} · ${fmtDate(ic.date)}</div>${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div>${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" style="flex-shrink:0" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}</div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
+}
+
+function approveInterchange(id) {
+  const ic = state.db.interchange.find(i=>i.id===id);
+  if (!ic) return;
+  ic.status='approved';
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Interchange Approved', ic.container);
+  renderInterchange(_icFilter);
+  toast('Interchange approved', 'success');
+}
+
+function showAddInterchangeModal() {
+  openModal('Record Interchange', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="ic_cont" placeholder="MSCU0000000"/></div><div class="fg"><label>Type</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div></div><div class="form-row-2"><div class="fg"><label>Shipping Line</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div><div class="fg"><label>Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div><button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
+}
+
+function saveInterchange() {
+  const cont = document.getElementById('ic_cont').value.trim().toUpperCase();
+  if (!cont) { toast('Container number required', 'error'); return; }
+  if (!/^[A-Z0-9]{4,12}$/.test(cont)) { toast('Invalid container format', 'error'); return; }
+  state.db.interchange.push({
+    id: uid('IC'), container: cont,
+    type: document.getElementById('ic_type').value,
+    line: document.getElementById('ic_line').value,
+    condition: document.getElementById('ic_cond').value,
+    truck:  document.getElementById('ic_truck').value,
+    driver: document.getElementById('ic_driver').value,
+    notes:  sanitize(document.getElementById('ic_notes').value.trim()),
+    date: new Date().toISOString(), status:'pending', img:'',
+  });
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Interchange Recorded', cont);
+  closeModal(); renderInterchange('all');
+  toast('Interchange recorded', 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 18  SHIPPING LINES
+────────────────────────────────────────────────────────────────── */
+let _linesFilter='all';
+function filterLines(f,btn){ _linesFilter=f; document.querySelectorAll('#sec-shippinglines .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderLines(f); }
+
+function renderLines(f){
+  let lines=f==='all'?state.db.shippingLines:state.db.shippingLines.filter(l=>l.active);
+  const summary=document.getElementById('linesSummary');
+  if(summary){
+    summary.innerHTML=`<div class="panel"><div class="panel-head"><span class="panel-title">Summary</span></div><div class="fuel-summary-row"><span class="fsr-label">Total Lines</span><span class="fsr-val">${state.db.shippingLines.length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Active</span><span class="fsr-val">${state.db.shippingLines.filter(l=>l.active).length}</span></div><div class="fuel-summary-row"><span class="fsr-label">Trips (all)</span><span class="fsr-val">${state.db.trips.length}</span></div></div>`;
+  }
+  const grid=document.getElementById('linesGrid');
+  if(!grid) return;
+  grid.innerHTML=lines.map(l=>`<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">KSh ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">KSh ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">KSh ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px">${sbadge(l.active?'active':'off_duty')}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
+}
+
+function showAddLineModal() {
+  openModal('Add Shipping Line', `<div class="form-row-2"><div class="fg"><label>Code</label><input id="sl_code" placeholder="MSC" maxlength="6"/></div><div class="fg"><label>Full Name</label><input id="sl_name" placeholder="Mediterranean Shipping Co."/></div></div><div class="fg"><label>Contact Email</label><input id="sl_email" type="email" placeholder="office@line.com"/></div><div class="form-row-2"><div class="fg"><label>20ft Rate (KSh)</label><input id="sl_r20" type="number" placeholder="10000"/></div><div class="fg"><label>40ft Rate (KSh)</label><input id="sl_r40" type="number" placeholder="14000"/></div></div><div class="fg"><label>40ft HC Rate (KSh)</label><input id="sl_rhc" type="number" placeholder="16000"/></div><button class="submit-btn" onclick="saveShippingLine()">Add Line →</button>`);
+}
+
+function saveShippingLine() {
+  const code = document.getElementById('sl_code').value.trim().toUpperCase();
+  const name = document.getElementById('sl_name').value.trim();
+  if (!code||!name) { toast('Code and name required', 'error'); return; }
+  if (code.length > 6) { toast('Code must be max 6 characters', 'error'); return; }
+  state.db.shippingLines.push({
+    id: uid('SL'), code, name,
+    contact: sanitize(document.getElementById('sl_email').value.trim()),
+    rate20: Math.max(0, parseInt(document.getElementById('sl_r20').value)||10000),
+    rate40: Math.max(0, parseInt(document.getElementById('sl_r40').value)||14000),
+    rateHC: Math.max(0, parseInt(document.getElementById('sl_rhc').value)||16000),
+    active: true,
+  });
+  scheduleSave(); closeModal(); renderLines('all');
+  toast(`${code} added`, 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 19  REQUISITIONS
+────────────────────────────────────────────────────────────────── */
+let _reqFilter='all';
+function filterRequisitions(f,btn){ _reqFilter=f; document.querySelectorAll('#sec-requisitions .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderRequisitions(f); }
+
+function renderRequisitions(f){
+  let items=f==='all'?state.db.requisitions:state.db.requisitions.filter(r=>r.status===f);
+  const el=document.getElementById('reqList');
+  if(!el) return;
+  el.innerHTML=items.map(r=>`<div class="req-card"><div class="req-card-head"><div><div style="font-size:12.5px;font-weight:700;color:var(--text)">${r.category}</div><div class="req-meta">${r.id} · ${fmtDate(r.date)}</div></div><div style="text-align:right">${sbadge(r.status)}<div class="req-amount" style="margin-top:4px">${fmtKsh(r.amount)}</div></div></div><div class="req-items">${r.items}</div><div class="req-meta" style="margin-top:6px">Requester: ${r.requester}${r.approver?` · Approved by: ${r.approver}`:''}</div>${r.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px;font-style:italic">${r.notes}</div>`:''}</div>`).join('')||'<div class="empty-state"><div class="empty-state-icon"></div><div class="empty-state-label">No requisitions</div></div>';
+}
+
+function showAddRequisitionModal() {
+  openModal('New Requisition', `<div class="form-row-2"><div class="fg"><label>Category</label><select id="rq_cat"><option>Fuel Advance</option><option>Tyre Parts</option><option>Tool Purchase</option><option>Medical</option><option>Lubricants</option><option>Other</option></select></div><div class="fg"><label>Amount (KSh)</label><input id="rq_amt" type="number" placeholder="0"/></div></div><div class="fg"><label>Items / Description</label><textarea id="rq_items" rows="3" placeholder="List what is needed…"></textarea></div><div class="fg"><label>Notes</label><input id="rq_notes" placeholder="Additional context…"/></div><button class="submit-btn" onclick="saveRequisition()">Submit Requisition →</button>`);
+}
+
+function saveRequisition() {
+  const items = document.getElementById('rq_items').value.trim();
+  const amt   = Math.max(0, parseInt(document.getElementById('rq_amt').value)||0);
+  if (!items||!amt) { toast('Items and amount required','error'); return; }
+  state.db.requisitions.push({
+    id: uid('REQ'), requester: state.profile.name,
+    category: document.getElementById('rq_cat').value,
+    items, amount: amt,
+    notes: sanitize(document.getElementById('rq_notes').value.trim()),
+    date: new Date().toISOString(), status:'pending',
+    approver:null, approvedDate:null,
+  });
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Requisition Submitted', `${items.slice(0,50)}…`);
+  closeModal(); renderRequisitions('all');
+  toast('Requisition submitted', 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 20  WORKSHOP
+────────────────────────────────────────────────────────────────── */
+let _wsFilter='all';
+function filterWorkshop(f,btn){ _wsFilter=f; document.querySelectorAll('#sec-workshop .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderWorkshop(f); }
+
+function renderWorkshop(f){
+  let items=f==='all'?state.db.workshop:state.db.workshop.filter(w=>w.status===f);
+  const el=document.getElementById('workshopList');
+  if(!el) return;
+  el.innerHTML=items.map(w=>`<div class="ws-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div style="font-size:12.5px;font-weight:700;color:var(--text)">${w.title}</div><div style="font-size:10.5px;color:var(--text-3);margin-top:2px">${w.id} · ${truckName(w.truckId)}</div></div>${sbadge(w.status)}</div><div style="font-size:11.5px;color:var(--text-2);margin-bottom:8px">${w.desc}</div><div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9.5px;color:var(--text-3)"><span>Tech: ${w.tech}</span><span>Total: <span style="color:var(--gold);font-weight:700">${fmtKsh(w.total)}</span></span></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🔩</div><div class="empty-state-label">No workshop jobs</div></div>';
+}
+
+function showAddWorkshopJobModal() {
+  openModal('New Workshop Job Card', `<div class="fg"><label>Truck</label><select id="ws_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg} — ${t.make}</option>`).join('')}</select></div><div class="fg"><label>Job Title</label><input id="ws_title" placeholder="Describe the job…"/></div><div class="fg"><label>Description</label><textarea id="ws_desc" rows="3" placeholder="Detailed scope of work…"></textarea></div><div class="form-row-2"><div class="fg"><label>Technician</label><input id="ws_tech" placeholder="Tech name"/></div><div class="fg"><label>Labour (KSh)</label><input id="ws_labour" type="number" placeholder="0"/></div></div><div class="form-row-2"><div class="fg"><label>Parts Description</label><input id="ws_parts" placeholder="Parts list…"/></div><div class="fg"><label>Parts Cost (KSh)</label><input id="ws_pcost" type="number" placeholder="0"/></div></div><button class="submit-btn" onclick="saveWorkshopJob()">Create Job Card →</button>`);
+}
+
+function saveWorkshopJob() {
+  const title = document.getElementById('ws_title').value.trim();
+  if (!title) { toast('Job title required','error'); return; }
+  const labour = Math.max(0, parseInt(document.getElementById('ws_labour').value)||0);
+  const pcost  = Math.max(0, parseInt(document.getElementById('ws_pcost').value)||0);
+  state.db.workshop.push({
+    id: uid('WS'), truckId: document.getElementById('ws_truck').value,
+    title, desc: sanitize(document.getElementById('ws_desc').value.trim()),
+    tech: sanitize(document.getElementById('ws_tech').value.trim()),
+    parts: sanitize(document.getElementById('ws_parts').value.trim()),
+    labour, total: labour+pcost,
+    status:'reported', reported: new Date().toISOString(), diagnosed:null,
+  });
+  scheduleSave();
+  addAudit(state.profile.username, 'Workshop Job Created', title);
+  closeModal(); renderWorkshop('all');
+  toast('Job card created', 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 21  INVOICING (with vault PIN)
+────────────────────────────────────────────────────────────────── */
+function renderInvoicing(f) {
+  if (!state.financeUnlocked) return;
+  renderInvoiceKpis();
+  renderInvoiceList(f);
+}
+
+function renderInvoiceKpis() {
+  const inv = state.db.invoices;
+  const total    = inv.reduce((s,i)=>s+i.total,0);
+  const paid     = inv.reduce((s,i)=>s+i.paid,0);
+  const outstanding = total - paid;
+  const overdue  = inv.filter(i=>i.status==='overdue').reduce((s,i)=>s+(i.total-i.paid),0);
+  const kpis = document.getElementById('invKpis');
+  if (!kpis) return;
+  kpis.innerHTML = `${kpiCard('Total Invoiced', fmtKsh(total), `${inv.length} invoices`, 'kpi-gold')} ${kpiCard('Collected', fmtKsh(paid), `${Math.round(paid/total*100)||0}% collected`, 'kpi-green')} ${kpiCard('Outstanding', fmtKsh(outstanding), 'Pending payment', 'kpi-blue')} ${kpiCard('Overdue', fmtKsh(overdue), `${inv.filter(i=>i.status==='overdue').length} invoices`, 'kpi-red')}`;
+}
+
+let _invFilter='all';
+function filterInvoices(f,btn){ _invFilter=f; document.querySelectorAll('#sec-invoicing .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderInvoiceList(f); }
+
+function renderInvoiceList(f){
+  let items=f==='all'?state.db.invoices:state.db.invoices.filter(i=>i.status===f);
+  const el=document.getElementById('invoicesList');
+  if(!el) return;
+  el.innerHTML=`<div class="inv-grid">${items.map(inv=>`<div class="inv-card ${inv.status}" onclick="showInvoiceDetail('${inv.id}')"><div class="inv-type-tag">${inv.ref}</div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px">${inv.client}</div><div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:10px"><div><div style="font-family:var(--font-brand);font-size:20px;font-weight:700;color:var(--gold)">${fmtKsh(inv.total)}</div><div style="font-size:10px;color:var(--text-3);margin-top:2px">${inv.paid?`Paid: ${fmtKsh(inv.paid)}`:'Unpaid'}</div></div>${sbadge(inv.status)}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:8px">Due: ${fmtDate(inv.due)}</div></div>`).join('')||'<div class="empty-state" style="grid-column:1/-1"><div class="empty-state-label">No invoices</div></div>'}</div>`;
+}
+
+function showInvoiceDetail(id) {
+  const inv = state.db.invoices.find(i=>i.id===id);
+  if (!inv) return;
+  const trips = state.db.trips.filter(t=>inv.trips.includes(t.id));
+  openModal(`Invoice — ${inv.ref}`, `<div class="inv-doc"><div class="inv-doc-head"><div><div class="inv-doc-company-name">GARGO</div><div class="inv-doc-company-details">Gargo Logistics Ltd · Mombasa, Kenya<br>+254 116 307 751 · KRA: P051234567X</div></div><div style="text-align:right"><div class="inv-doc-id">${inv.ref}</div><div class="inv-doc-type">Tax Invoice</div><div class="inv-doc-status">${sbadge(inv.status)}</div></div></div><div class="inv-billing-row"><div><div class="inv-bill-label">Bill To</div><div class="inv-bill-name">${inv.client}</div></div><div><div class="inv-bill-label">Invoice Date</div><div class="inv-bill-detail">${fmtDate(inv.date)}</div><div class="inv-bill-label" style="margin-top:6px">Due Date</div><div class="inv-bill-detail">${fmtDate(inv.due)}</div></div></div><div class="inv-items-table-wrap"><table class="inv-items-table"><thead><tr><th>Description</th><th>Container</th><th>Work Type</th><th style="text-align:right">Amount</th></tr></thead><tbody>${trips.map(t=>`<tr><td>Haulage — ${t.ctype}</td><td class="mono">${t.container}</td><td>${t.workType}</td><td class="mono" style="text-align:right">${fmtKsh(inv.subtotal/Math.max(trips.length,1))}</td></tr>`).join('')||`<tr><td colspan="4" style="text-align:center;color:var(--text-3)">General haulage services</td></tr>`}</tbody></table></div><div class="inv-totals"><div class="inv-totals-row"><span>Subtotal</span><span class="inv-amount">${fmtKsh(inv.subtotal)}</span></div><div class="inv-totals-row"><span>VAT 16%</span><span class="inv-amount">${fmtKsh(inv.vat)}</span></div>${inv.paid?`<div class="inv-totals-row"><span>Amount Paid</span><span class="inv-amount" style="color:var(--green)">-${fmtKsh(inv.paid)}</span></div>`:''}<div class="inv-totals-row total-row"><span style="font-weight:700">Balance Due</span><span class="inv-amount" style="font-size:16px;color:var(--gold);font-weight:700">${fmtKsh(inv.total-inv.paid)}</span></div></div><div class="inv-bank">Bank: Equity Bank · A/C: 1234567890 · Swift: EQBLKENX · Ref: ${inv.ref}</div></div><div style="display:flex;gap:8px;flex-wrap:wrap">${inv.status!=='paid'?`<button class="modal-btn success" onclick="markInvoicePaid('${id}')">Mark as Paid</button>`:''}${inv.status==='draft'?`<button class="modal-btn primary" onclick="markInvoiceSent('${id}')">Mark as Sent</button>`:''}<button class="modal-btn ghost" onclick="downloadInvoicePDF('${id}')">⬇ Download PDF</button></div>`);
+}
+
+function markInvoicePaid(id) {
+  const inv = state.db.invoices.find(i=>i.id===id);
+  if (!inv) return;
+  inv.status='paid'; inv.paid=inv.total;
+  scheduleSave();
+  addAudit(state.profile.username, 'Invoice Paid', `${inv.ref} — ${fmtKsh(inv.total)}`);
+  closeModal(); renderInvoiceList(_invFilter); renderInvoiceKpis();
+  toast(`${inv.ref} marked as paid`, 'success');
+}
+
+function markInvoiceSent(id) {
+  const inv = state.db.invoices.find(i=>i.id===id);
+  if (!inv) return;
+  inv.status='sent';
+  scheduleSave();
+  addAudit(state.profile.username, 'Invoice Sent', inv.ref);
+  closeModal(); renderInvoiceList(_invFilter);
+  toast(`${inv.ref} marked as sent`, 'success');
+}
+
+function downloadInvoicePDF(id) { toast('PDF export — integrate with jsPDF for production', 'info'); }
+
+function showCreateInvoiceModal() {
+  if (!state.financeUnlocked) { openFinanceLock(()=>showCreateInvoiceModal()); return; }
+  openModal('Create Invoice', `<div class="fg"><label>Client Name</label><input id="ci_client" placeholder="Company Ltd"/></div><div class="form-row-2"><div class="fg"><label>Subtotal (KSh)</label><input id="ci_sub" type="number" placeholder="0"/></div><div class="fg"><label>Due Date</label><input id="ci_due" type="date"/></div></div><div class="fg"><label>Select Trips</label><div style="max-height:150px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px">${state.db.trips.map(t=>`<label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11.5px;cursor:pointer"><input type="checkbox" value="${t.id}" style="accent-color:var(--gold)">${t.container} — ${t.origin}→${t.dest}</label>`).join('')}</div></div><div class="fg"><label>Notes</label><textarea id="ci_notes" rows="2"></textarea></div><button class="submit-btn" onclick="saveInvoice()">Create Invoice →</button>`);
+}
+
+function saveInvoice() {
+  const client = document.getElementById('ci_client').value.trim();
+  const sub    = Math.max(0, parseInt(document.getElementById('ci_sub').value)||0);
+  if (!client||!sub) { toast('Client and amount required','error'); return; }
+  const vat   = Math.round(sub * 0.16);
+  const total = sub+vat;
+  const trips = [...document.querySelectorAll('#modalBody input[type=checkbox]:checked')].map(cb=>cb.value);
+  const inv = {
+    id: uid('INV'), client, subtotal:sub, vat, total, paid:0,
+    trips, status:'draft', ref: `INV-${Date.now().toString().slice(-6)}`,
+    date: new Date().toISOString(),
+    due: document.getElementById('ci_due').value||new Date(Date.now()+30*86400000).toISOString(),
+    notes: sanitize(document.getElementById('ci_notes').value.trim()),
+  };
+  state.db.invoices.push(inv);
+  scheduleSave();
+  addAudit(state.profile.username, 'Invoice Created', `${inv.ref} — ${client}`);
+  closeModal(); renderInvoicing(_invFilter);
+  toast(`Invoice ${inv.ref} created`, 'success');
+}
+
+function autoGenerateInvoices() {
+  if (!state.financeUnlocked) { openFinanceLock(()=>autoGenerateInvoices()); return; }
+  const tripsWithoutInvoice = state.db.trips.filter(t=>t.status==='completed' && !state.db.invoices.some(i=>i.trips.includes(t.id)));
+  if (!tripsWithoutInvoice.length) { toast('All completed trips already invoiced','info'); return; }
+  tripsWithoutInvoice.forEach(t=>{
+    const line  = state.db.shippingLines.find(l=>l.id===t.shippingLine);
+    const rates = state.db.billingRates[t.ctype]||{base:12000,perKm:180};
+    const sub   = rates.base + rates.perKm * t.distance;
+    const vat   = Math.round(sub * 0.16);
+    state.db.invoices.push({
+      id: uid('INV'), client: line? `${line.name} (Auto)` :'Client (Auto)',
+      subtotal:sub, vat, total:sub+vat, paid:0,
+      trips:[t.id], status:'draft',
+      ref: `INV-${Date.now().toString().slice(-4)}-${uid('').slice(0,3)}`,
+      date: new Date().toISOString(),
+      due: new Date(Date.now()+30*86400000).toISOString(),
+      notes:'Auto-generated from completed trip',
+    });
+  });
+  scheduleSave();
+  addAudit(state.profile.username, 'Auto Invoices', `${tripsWithoutInvoice.length} generated`);
+  renderInvoicing(_invFilter);
+  toast(`${tripsWithoutInvoice.length} invoice(s) generated`, 'success');
+}
+
+function showBillingRatesModal() {
+  if (!state.financeUnlocked) { openFinanceLock(()=>showBillingRatesModal()); return; }
+  const rates = state.db.billingRates;
+  openModal('Billing Rates', `<div class="table-wrap"><table class="data-table"><thead><tr><th>Container Type</th><th>Base Rate (KSh)</th><th>Per km (KSh)</th></tr></thead><tbody>${Object.entries(rates).map(([k,v])=>`<tr><td>${k}</td><td><input type="number" value="${v.base}" onchange="updateRate('${k}','base',this.value)" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;width:100px"/></td><td><input type="number" value="${v.perKm}" onchange="updateRate('${k}','perKm',this.value)" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;width:100px"/></td></tr>`).join('')}</tbody></table></div><button class="submit-btn" style="margin-top:12px" onclick="saveBillingRates()">Save Rates →</button>`);
+}
+
+function updateRate(ctype, field, val) { state.db.billingRates[ctype][field] = Math.max(0, parseInt(val)||0); }
+function saveBillingRates() { scheduleSave(); closeModal(); toast('Billing rates updated', 'success'); }
+
+function revealInvKpis() {
+  openFinanceLock(()=>{
+    document.getElementById('invKpiRevealBar').style.display='none';
+    document.getElementById('invKpis').style.display='grid';
+    renderInvoiceKpis();
+  });
+}
+
+function lockFinance() {
+  state.financeUnlocked = false;
+  document.getElementById('invKpis').style.display='none';
+  document.getElementById('invKpiRevealBar').style.display='flex';
+  toast('Finance vault locked', 'info');
+}
+
+function requireFinanceReport(tab, btn) {
+  if (!state.financeUnlocked) {
+    openFinanceLock(()=>{ renderReport('revenue'); });
+    return;
+  }
+  renderReport('revenue');
+  document.querySelectorAll('#sec-reports .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 22  ALLOCATION ENGINE
+────────────────────────────────────────────────────────────────── */
+let _allocTab='auto';
+function switchAllocTab(tab, btn) {
+  _allocTab=tab;
+  ['allocTabAuto','allocTabManual','allocTabRequisitions','allocTabWorkshop'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  const map={auto:'allocTabAuto',manual:'allocTabManual',requisitions:'allocTabRequisitions',workshop:'allocTabWorkshop'};
+  const el=document.getElementById(map[tab]);
+  if(el) el.style.display='block';
+  document.querySelectorAll('#sec-allocation .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  if(tab==='auto') renderAllocAuto();
+  if(tab==='manual') renderAllocManual();
+  if(tab==='requisitions') renderAdminRequisitions();
+  if(tab==='workshop') renderAdminWorkshop();
+}
+
+function renderAllocation() { renderAllocAuto(); }
+
+function renderAllocAuto() {
+  const db=state.db;
+  const avail   = db.trucks.filter(t=>t.status==='available').length;
+  const drivers = db.drivers.filter(d=>d.status==='available').length;
+  const pending = db.trips.filter(t=>t.status==='active').length;
+  document.getElementById('allocKpis').innerHTML= `${kpiCard('Available Trucks', avail, '', 'kpi-green')} ${kpiCard('Available Drivers', drivers, '', 'kpi-gold')} ${kpiCard('Active Dispatches', pending, '', 'kpi-blue')}`;
+  const queue=db.trips.filter(t=>t.status==='active').slice(0,5);
+  document.getElementById('allocQueue').innerHTML=queue.map(t=>`<div class="alloc-card"><div><div style="font-size:12px;font-weight:600;color:var(--text)">${t.container}</div><div style="font-size:10.5px;color:var(--text-3)">${t.origin}→${t.dest}</div></div>${sbadge(t.status)}</div>`).join('')||'<div style="padding:12px;color:var(--text-3);font-size:11px">No pending dispatches</div>';
+  document.getElementById('allocRules').innerHTML=db.allocationRules.map(r=>`<div class="alloc-rule"><div style="display:flex;justify-content:space-between;align-items:center"><div class="rule-name">${r.name}</div><div class="rule-weight">${r.weight}%</div></div><div class="rule-desc">${r.desc}</div></div>`).join('');
+  document.getElementById('allocRecommendations').innerHTML='<div style="padding:16px;color:var(--text-3);font-size:11.5px">Run auto-allocation to generate recommendations</div>';
+}
+
+function renderAllocManual() {
+  fillSelect('ma_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.status}`]);
+  fillSelect('ma_driver', state.db.drivers.filter(d=>d.status==='available'), d=>[d.id, d.name]);
+  fillSelect('ma_trip',   state.db.trips.filter(t=>t.status==='active'), t=>[t.id, `${t.container} — ${t.origin}→${t.dest}`]);
+  renderStatusOverridePanel();
+}
+
+function renderStatusOverridePanel() {
+  const rows = [...state.db.trucks.slice(0,5).map(t=>({ label:t.reg, kind:'Truck', id:t.id, status:t.status, type:'truck' })), ...state.db.drivers.slice(0,5).map(d=>({ label:d.name, kind:'Driver', id:d.id, status:d.status, type:'driver' }))];
+  const panel=document.getElementById('adminStatusPanel');
+  if(!panel) return;
+  panel.innerHTML=rows.map(r=>`<div class="admin-status-row"><div><div style="font-size:12px;color:var(--text)">${r.label}</div><div style="font-size:10px;color:var(--text-3)">${r.kind}</div></div>${sbadge(r.status)}<div style="display:flex;gap:4px">${(r.type==='truck'?['available','on_trip','maintenance','breakdown','off_duty']:['available','on_trip','off_duty','suspended']).map(s=>`<button class="tbl-btn" onclick="adminOverrideStatus('${r.type}','${r.id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`).join('');
+}
+
+function adminOverrideStatus(type, id, status) {
+  if(type==='truck'){ const t=state.db.trucks.find(t=>t.id===id); if(t){t.status=status; addAudit(state.profile.username,'Status Override', `${t.reg} → ${status}`);} }
+  else { const d=state.db.drivers.find(d=>d.id===id); if(d){d.status=status; addAudit(state.profile.username,'Status Override', `${d.name} → ${status}`);} }
+  scheduleSave(); buildBadges(); renderStatusOverridePanel(); toast(`Status updated to ${status}`,'success');
+}
+
+function runAllocation() {
+  const avail   = state.db.trucks.filter(t=>t.status==='available' && t.fuelPct >=40);
+  const drivers = state.db.drivers.filter(d=>d.status==='available');
+  if (!avail.length || !drivers.length) { toast('No available trucks/drivers for allocation','warning'); return; }
+  const recs = avail.slice(0,3).map((t,i)=>({ truck:t, driver:drivers[i%drivers.length], score:Math.round(70+Math.random()*30) }));
+  document.getElementById('allocRecommendations').innerHTML=recs.map(r=>`<div class="recommend-card"><div><div class="rc-label">Truck</div><div class="rc-val">${r.truck.reg}</div></div><div><div class="rc-label">Driver</div><div class="rc-val">${r.driver.name}</div></div><div><div class="rc-label">Match Score</div><div class="rc-val" style="color:var(--gold)">${r.score}%</div></div><button class="modal-btn primary" onclick="applyAllocation('${r.truck.id}','${r.driver.id}')">Assign</button></div>`).join('');
+  toast(`${recs.length} recommendations generated`, 'success');
+}
+
+function applyAllocation(truckId, driverId) {
+  const t = state.db.trucks.find(t=>t.id===truckId);
+  const d = state.db.drivers.find(d=>d.id===driverId);
+  if (!t||!d) return;
+  t.driver = driverId; d.truckId = truckId;
+  scheduleSave();
+  addAudit(state.profile.username, 'Auto Allocation', `${t.reg} ← ${d.name}`);
+  toast(`${d.name} assigned to ${t.reg}`, 'success');
+}
+
+function manualAssignDriverToTruck() {
+  const truck  = document.getElementById('ma_truck').value;
+  const driver = document.getElementById('ma_driver').value;
+  if (!truck||!driver) { toast('Select truck and driver','error'); return; }
+  const t=state.db.trucks.find(t=>t.id===truck);
+  const d=state.db.drivers.find(d=>d.id===driver);
+  if(t) t.driver=driver;
+  if(d) d.truckId=truck;
+  scheduleSave();
+  addAudit(state.profile.username, 'Manual Assignment', `${t?.reg} ← ${d?.name}`);
+  toast(`${d?.name} assigned to ${t?.reg}`, 'success');
+}
+
+function manualAssignContainer() {
+  const tripId = document.getElementById('ma_trip').value;
+  const cont   = document.getElementById('ma_container').value.trim().toUpperCase();
+  if (!tripId||!cont) { toast('Select trip and enter container','error'); return; }
+  if (!/^[A-Z0-9]{4,12}$/.test(cont)) { toast('Invalid container format', 'error'); return; }
+  const t = state.db.trips.find(t=>t.id===tripId);
+  if (t) { t.container=cont; t.ctype=document.getElementById('ma_ctype').value; }
+  scheduleSave();
+  addAudit(state.profile.username, 'Container Assignment', `${cont} → ${tripId}`);
+  toast(`${cont} assigned to trip`, 'success');
+}
+
+function showAllocationRulesModal() {
+  openModal('Configure Allocation Rules', `${state.db.allocationRules.map(r=>`<div style="padding:10px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><div style="font-size:12px;font-weight:600;color:var(--text)">${r.name}</div><input type="number" value="${r.weight}" min="0" max="100" style="width:60px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;text-align:center" onchange="updateRuleWeight('${r.id}',this.value)"/></div><div style="font-size:11px;color:var(--text-3)">${r.desc}</div></div>`).join('')}<button class="submit-btn" onclick="saveAllocRules()">Save Rules →</button>`);
+}
+
+function updateRuleWeight(id, val) { const r=state.db.allocationRules.find(r=>r.id===id); if(r) r.weight=Math.max(0, parseInt(val)||0); }
+function saveAllocRules() { scheduleSave(); closeModal(); toast('Allocation rules saved','success'); }
+
+function renderAdminRequisitions() {
+  const pending = state.db.requisitions.filter(r=>r.status==='pending');
+  const el=document.getElementById('adminReqList');
+  if(!el) return;
+  el.innerHTML=pending.map(r=>`<div class="req-card"><div class="req-card-head"><div><div style="font-size:12.5px;font-weight:700;color:var(--text)">${r.category}</div><div class="req-meta">${r.requester} · ${fmtDate(r.date)}</div></div><div class="req-amount">${fmtKsh(r.amount)}</div></div><div class="req-items">${r.items}</div><div style="display:flex;gap:8px;margin-top:10px"><button class="modal-btn success" onclick="reviewReq('${r.id}','approved')">Approve</button><button class="modal-btn danger" onclick="reviewReq('${r.id}','rejected')">Reject</button></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No pending requisitions</div></div>';
+}
+
+function reviewReq(id, status) {
+  const r=state.db.requisitions.find(r=>r.id===id);
+  if(!r) return;
+  r.status=status; r.approver=state.profile.username; r.approvedDate=new Date().toISOString();
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, `Requisition ${status}`, `${r.category} — ${fmtKsh(r.amount)}`);
+  renderAdminRequisitions(); renderRequisitions(_reqFilter);
+  toast(`Requisition ${status}`, status==='approved'?'success':'warning');
+}
+
+function renderAdminWorkshop() {
+  const items=state.db.workshop.filter(w=>w.status!=='completed');
+  const el=document.getElementById('adminWorkshopList');
+  if(!el) return;
+  el.innerHTML=items.map(w=>`<div class="ws-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div style="font-size:12.5px;font-weight:700;color:var(--text)">${w.title}</div><div style="font-size:10.5px;color:var(--text-3)">${truckName(w.truckId)} · ${w.tech}</div></div>${sbadge(w.status)}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['reported','diagnosed','in_progress','completed'].map(s=>`<button class="filter-btn${w.status===s?' active':''}" onclick="advanceWorkshop('${w.id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No open workshop jobs</div></div>';
+}
+
+function advanceWorkshop(id, status) {
+  const w=state.db.workshop.find(w=>w.id===id);
+  if(!w) return;
+  w.status=status;
+  if(status==='completed') { const t=state.db.trucks.find(t=>t.id===w.truckId); if(t && t.status==='maintenance')t.status='available'; }
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Workshop Update', `${w.title} → ${status}`);
+  renderAdminWorkshop(); renderWorkshop(_wsFilter);
+  toast(`Job updated to ${status}`, 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 23  WORK ANALYSIS
+────────────────────────────────────────────────────────────────── */
+function renderWorkAnalysis(period, btn) {
+  if (btn) { document.querySelectorAll('#sec-workanalysis .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  const db=state.db;
+  let trips=db.trips;
+  const now=Date.now();
+  if(period==='today') trips=trips.filter(t=>new Date(t.startTime).toDateString()===new Date().toDateString());
+  else if(period==='week') trips=trips.filter(t=>now-new Date(t.startTime)<7*86400000);
+  else if(period==='month') trips=trips.filter(t=>now-new Date(t.startTime)<30*86400000);
+  const workTypes={};
+  trips.forEach(t=>{ workTypes[t.workType]=(workTypes[t.workType]||0)+1; });
+  const maxCount=Math.max(...Object.values(workTypes),1);
+  const kpis=document.getElementById('waKpis');
+  if(kpis){
+    kpis.innerHTML= `${kpiCard('Total Trips', trips.length, '', 'kpi-gold')} ${kpiCard('Work Types', Object.keys(workTypes).length, '', 'kpi-blue')} ${kpiCard('Completed', trips.filter(t=>t.status==='completed').length, '', 'kpi-green')} ${kpiCard('Delayed', trips.filter(t=>t.status==='delayed').length, '', 'kpi-red')}`;
+  }
+  const vol=document.getElementById('waVolumeChart');
+  if(vol){
+    vol.innerHTML=Object.entries(workTypes).sort((a,b)=>b[1]-a[1]).map(([wt,cnt])=>`<div class="wt-bar-item"><div class="wt-bar-label" title="${wt}">${wt}</div><div class="wt-bar-track"><div class="wt-bar-fill" style="width:${Math.round(cnt/maxCount*100)}%"></div></div><div class="wt-bar-count">${cnt}</div></div>`).join('')||'<div style="padding:12px;color:var(--text-3)">No data for this period</div>';
+  }
+  const matrixData=Object.entries(workTypes).map(([wt,cnt])=>{
+    const wtTrips=trips.filter(t=>t.workType===wt);
+    const onTime=wtTrips.filter(t=>t.status==='completed'||t.status==='active').length;
+    const onTimePct=wtTrips.length?Math.round(onTime/wtTrips.length*100):0;
+    const truckCounts={};
+    wtTrips.forEach(t=>{ truckCounts[t.truckId]=(truckCounts[t.truckId]||0)+1; });
+    const topTruckId=Object.entries(truckCounts).sort((a,b)=>b[1]-a[1])[0]?.[0];
+    return { wt, cnt, onTimePct, topTruck: topTruckId?state.db.trucks.find(t=>t.id===topTruckId)?.reg||'—':'—' };
+  });
+  const mat=document.getElementById('waMatrix');
+  if(mat){
+    mat.innerHTML=matrixData.map(m=>`<tr><td>${m.wt}</td><td class="mono" style="text-align:center">${m.cnt}</td><td class="mono" style="text-align:center">~${Math.round(1+(Math.random()*2))}h</td><td class="mono" style="text-align:center;color:${m.onTimePct>70?'var(--green)':'var(--amber)'}">${m.onTimePct}%</td><td class="mono" style="color:var(--gold)">${m.topTruck}</td></tr>`).join('')||`<tr><td colspan="5" class="empty-td">No data</td></tr>`;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────────
+   § 24  REPORTS (with finance lock)
+────────────────────────────────────────────────────────────────── */
+function renderReport(tab, btn) {
+  if (btn) { document.querySelectorAll('#sec-reports .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  const db=state.db;
+  const out=document.getElementById('reportContent');
+  if(!out) return;
+  if(tab==='overview'){
+    out.innerHTML=`<div class="two-col-grid"><div class="report-block"><h3>Fleet Overview</h3>${reportRow('Total Trucks', db.trucks.length)}${reportRow('Available', db.trucks.filter(t=>t.status==='available').length)}${reportRow('On Trip', db.trucks.filter(t=>t.status==='on_trip').length)}${reportRow('Breakdown/Maintenance', db.trucks.filter(t=>['breakdown','maintenance'].includes(t.status)).length)}</div><div class="report-block"><h3>Operations</h3>${reportRow('Trips Today', db.trips.filter(t=>new Date(t.startTime).toDateString()===new Date().toDateString()).length)}${reportRow('Active Trips', db.trips.filter(t=>t.status==='active').length)}${reportRow('Completed (All)', db.trips.filter(t=>t.status==='completed').length)}${reportRow('Total Distance (All)', fmt(db.trips.reduce((s,t)=>s+t.distance,0))+' km')}</div><div class="report-block"><h3>Fuel</h3>${reportRow('Total Fills', db.fuel.length)}${reportRow('Total Litres', fmt(db.fuel.reduce((s,f)=>s+f.litres,0))+' L')}${reportRow('Total Cost', fmtKsh(db.fuel.reduce((s,f)=>s+f.litres*f.pricePerLitre,0)))}</div><div class="report-block"><h3>Compliance</h3>${reportRow('Open Maintenance', db.maintenance.filter(m=>m.status==='open').length)}${reportRow('Pending Requisitions', db.requisitions.filter(r=>r.status==='pending').length)}${reportRow('Shutouts Open', db.shutouts.filter(s=>s.status==='open').length)}</div></div>`;
+  } else if(tab==='fleet'){
+    out.innerHTML=`<div class="report-block"><h3>Fleet Utilisation</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Truck</th><th>Status</th><th>Fuel</th><th>Mileage</th><th>Trips</th><th>Next Service</th></tr></thead><tbody>${db.trucks.map(t=>`<tr><td class="mono" style="color:var(--gold)">${t.reg}</td><td>${sbadge(t.status)}</td><td><div class="fuel-bar" style="width:80px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></td><td class="mono">${fmt(t.mileage)} km</td><td class="mono">${db.trips.filter(tr=>tr.truckId===t.id).length}</td><td style="color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text-2)'}" class="mono">${fmtDate(t.nextService)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  } else if(tab==='drivers'){
+    out.innerHTML=`<div class="report-block"><h3>Driver Performance</h3><div class="table-wrap"><table class="data-table"><thead><tr><th>Driver</th><th>Status</th><th>Trips Today</th><th>Licence Exp.</th></tr></thead><tbody>${db.drivers.map(d=>`<tr><td>${d.name}</td><td>${sbadge(d.status)}</td><td class="mono" style="text-align:center">${d.tripsToday}</td><td style="color:${(new Date(d.licenceExp)-Date.now())<90*86400000?'var(--amber)':'var(--text-2)'}" class="mono">${fmtDate(d.licenceExp)}</td></tr>`).join('')}</tbody></table></div></div>`;
+  } else if(tab==='maintenance'){
+    const totalCost=db.maintenance.reduce((s,m)=>s+m.cost,0);
+    out.innerHTML=`<div class="report-block"><h3>Maintenance Summary</h3>${reportRow('Total Issues',db.maintenance.length)}${reportRow('Open',db.maintenance.filter(m=>m.status==='open').length)}${reportRow('In Progress',db.maintenance.filter(m=>m.status==='in_progress').length)}${reportRow('Resolved',db.maintenance.filter(m=>m.status==='resolved').length)}${reportRow('Total Cost',fmtKsh(totalCost))}</div><div class="report-block" style="margin-top:14px"><h3>Issues by Priority</h3>${['critical','high','medium','low'].map(p=>reportRow(p.charAt(0).toUpperCase()+p.slice(1),db.maintenance.filter(m=>m.priority===p).length)).join('')}</div>`;
+  } else if(tab==='fuel'){
+    out.innerHTML=`<div class="report-block"><h3>Fuel Report</h3>${reportRow('Total Fill-ups',db.fuel.length)}${reportRow('Total Litres',fmt(db.fuel.reduce((s,f)=>s+f.litres,0))+' L')}${reportRow('Total Spend',fmtKsh(db.fuel.reduce((s,f)=>s+f.litres*f.pricePerLitre,0)))}${reportRow('Avg Price/Litre','KSh '+(db.fuel.reduce((s,f)=>s+f.pricePerLitre,0)/Math.max(db.fuel.length,1)).toFixed(2))}</div>`;
+  } else if(tab==='revenue'){
+    if (!state.financeUnlocked) { openFinanceLock(()=>renderReport('revenue')); return; }
+    const inv=db.invoices;
+    out.innerHTML=`<div class="report-block"><h3>Revenue Report — CONFIDENTIAL</h3>${reportRow('Total Invoiced',fmtKsh(inv.reduce((s,i)=>s+i.total,0)))}${reportRow('Collected',fmtKsh(inv.reduce((s,i)=>s+i.paid,0)))}${reportRow('Outstanding',fmtKsh(inv.reduce((s,i)=>s+(i.total-i.paid),0)))}${reportRow('Overdue',fmtKsh(inv.filter(i=>i.status==='overdue').reduce((s,i)=>s+i.total,0)))}</div>`;
+  }
+}
+
+function reportRow(label, val) {
+  return `<div class="report-row"><span class="label">${label}</span><span class="val">${val}</span></div>`;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 25  LIVE TRACKING
+────────────────────────────────────────────────────────────────── */
+function renderTracking() {
+  const pos  = state.db.trackingPositions;
+  const trks = Object.keys(pos);
+  document.getElementById('trackingMeta').textContent = `${trks.length} vehicles tracked`;
+  const vehicles = document.getElementById('trackingVehicles');
+  if (vehicles) {
+    vehicles.innerHTML = trks.map(id=>{
+      const p = pos[id];
+      const t = state.db.trucks.find(t=>t.id===id);
+      return `<div class="tv-item"><div class="tv-reg">${t?.reg||id}</div><div>Speed: ${p.speed} km/h · ${p.heading}</div><div style="font-size:9px;color:var(--text-3)">${p.zone}</div></div>`;
+    }).join('');
+  }
+  const movements = document.getElementById('trackingMovements');
+  if (movements) {
+    movements.innerHTML = trks.map(id=>{
+      const p=pos[id]; const t=state.db.trucks.find(t=>t.id===id);
+      return `<div class="movement-row"><div class="mono" style="font-size:10px;color:var(--gold)">${t?.reg||id}</div><div style="font-size:11px;color:var(--text-2)">${p.zone} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div><div style="font-size:9.5px;color:var(--text-3)">${timeAgo(p.lastUpdate)}</div></div>`;
+    }).join('') || '<div style="padding:12px;color:var(--text-3)">No active movements</div>';
+  }
+  const geofence = document.getElementById('trackingGeofence');
+  if (geofence) {
+    geofence.innerHTML = `<div class="geofence-row"><div style="font-size:11px;color:var(--green)">✓ Kilindini Gate</div><div style="font-size:9.5px;color:var(--text-3)">KDA 001A · ${timeAgo(new Date(Date.now()-12*60000).toISOString())}</div></div><div class="geofence-row"><div style="font-size:11px;color:var(--amber)">⚠ B8 Zone Alert</div><div style="font-size:9.5px;color:var(--text-3)">KDE 123E · ${timeAgo(new Date(Date.now()-4*3600000).toISOString())}</div></div><div style="padding:12px;color:var(--text-3);font-size:10.5px">Live geofence events — GPS integration required for production.</div>`;
+  }
+}
+
+function refreshTracking() {
+  Object.keys(state.db.trackingPositions).forEach(id=>{
+    const p = state.db.trackingPositions[id];
+    if(p.speed>0) {
+      p.lat += (Math.random()-0.5)*0.002;
+      p.lng += (Math.random()-0.5)*0.002;
+      p.lastUpdate = new Date().toISOString();
+    }
+  });
+  renderTracking();
+  toast('Tracking positions refreshed','info',1800);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 26  USER MANAGEMENT
+────────────────────────────────────────────────────────────────── */
+function renderUserMgmt() {
+  if (!state.financeUnlocked) {
+    const kpis = document.getElementById('userKpis');
+    if (kpis) kpis.innerHTML = `<div class="vault-locked-banner" style="grid-column:1/-1"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><div><div class="title">Financial Vault Locked</div><div class="desc">Unlock with admin PIN to access user management.</div></div></div>`;
+    const ul = document.getElementById('userList');
+    if (ul) ul.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🔒</div>Vault protected.</div>`;
+    return;
+  }
+  const users  = state.db.profiles;
+  const kpis   = document.getElementById('userKpis');
+  if (kpis) {
+    kpis.innerHTML = `${kpiCard('Total Users', users.length, '', 'kpi-gold')} ${kpiCard('Active', users.filter(u=>u.active).length, '', 'kpi-green')} ${kpiCard('Admins', users.filter(u=>u.role==='admin').length, '', 'kpi-blue')}`;
+  }
+  const ul = document.getElementById('userList');
+  if (ul) {
+    ul.innerHTML = users.map(u=>`<div class="user-row" onclick="showUserDetail('${u.id}')"><div class="user-av-lg">${initials(u.name)}</div><div class="user-row-info"><div class="user-row-name">${u.name}${!u.active?'<span style="font-size:9px;color:var(--text-3)">(inactive)</span>':''}</div><div class="user-row-meta">${u.username} · ${u.email}</div></div><span class="sbadge s-${u.role==='admin'?'pending':u.role==='finance'?'completed':'active'}" style="font-size:9px">${roleLabel(u.role)}</span><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">Last: ${timeAgo(u.lastLogin)}</div></div>`).join('');
+  }
+  const roles=[
+    {name:'System Administrator',perms:'Full access — all modules including Finance Vault & Settings Vault'},
+    {name:'Operations Officer',  perms:'Dashboard, Fleet, Dispatch, Maintenance, Fuel, Shutout, Interchange'},
+    {name:'Finance Manager',     perms:'Invoicing (PIN), Revenue Reports, Billing Rates'},
+    {name:'Dispatch Controller', perms:'Dispatch Console, Active Trips, Driver/Truck visibility'},
+    {name:'Read-Only Viewer',    perms:'Dashboard and reports only — no edit access'},
+  ];
+  const rl = document.getElementById('roleList');
+  if (rl) {
+    rl.innerHTML = roles.map(r=>`<div class="role-card"><div class="role-name">${r.name}</div><div class="role-perms">${r.perms}</div></div>`).join('');
+  }
+  const audit = document.getElementById('auditLog');
+  if (audit) {
+    audit.innerHTML = [...state.db.auditLog].sort((a,b)=>new Date(b.time)-new Date(a.time)).slice(0,20).map(a=>`<div class="audit-row"><div class="audit-time">${fmtTime(a.time)} · ${fmtDate(a.time)}</div><div class="user-av-rail" style="width:22px;height:22px;font-size:8px">${initials(a.user)}</div><div style="flex:1;font-size:11.5px"><span style="font-weight:600;color:var(--text)">${a.action}</span><span style="color:var(--text-3);margin-left:6px">${a.detail}</span></div></div>`).join('');
+  }
+}
+
+function showUserDetail(id) {
+  const u = state.db.profiles.find(u=>u.id===id);
+  if (!u) return;
+  openModal(`User — ${u.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div class="user-av-lg" style="width:48px;height:48px;font-size:16px">${initials(u.name)}</div><div><div style="font-size:15px;font-weight:700;color:var(--text)">${u.name}</div><div class="mono" style="font-size:9px;color:var(--text-3)">${u.id}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Username</label><div class="mono">${u.username}</div></div><div class="fg" style="margin:0"><label>Role</label><div>${roleLabel(u.role)}</div></div><div class="fg" style="margin:0"><label>Email</label><div style="font-size:12px">${u.email}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(u.active?'active':'off_duty')}</div></div><div class="fg" style="margin:0"><label>Created</label><div class="mono" style="font-size:10px">${fmtDate(u.created)}</div></div><div class="fg" style="margin:0"><label>Last Login</label><div class="mono" style="font-size:10px">${timeAgo(u.lastLogin)}</div></div></div>${u.id!==state.profile?.id?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="modal-btn ${u.active?'danger':'success'}" onclick="toggleUserActive('${u.id}')">${u.active?'Deactivate':'Activate'} User</button></div>`:'<div style="font-size:11px;color:var(--text-3)">This is your account</div>'}`);
+}
+
+function toggleUserActive(id) {
+  const u=state.db.profiles.find(u=>u.id===id);
+  if(!u) return;
+  u.active=!u.active;
+  scheduleSave();
+  addAudit(state.profile.username,'User Status', `${u.name} → ${u.active?'active':'deactivated'}`);
+  closeModal(); renderUserMgmt();
+  toast(`${u.name} ${u.active?'activated':'deactivated'}`, 'success');
+}
+
+function showCreateUserModal() {
+  if (!state.financeUnlocked) { openFinanceLock(()=>showCreateUserModal()); return; }
+  openModal('Create User', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="cu_name" placeholder="Jane Doe"/></div><div class="fg"><label>Username</label><input id="cu_user" placeholder="jane.doe"/></div></div><div class="fg"><label>Email</label><input id="cu_email" type="email" placeholder="jane@gargo.co.ke"/></div><div class="form-row-2"><div class="fg"><label>Role</label><select id="cu_role"><option value="ops">Operations Officer</option><option value="dispatch">Dispatch Controller</option><option value="finance">Finance Manager</option><option value="viewer">Read-Only Viewer</option><option value="admin">System Administrator</option></select></div></div><div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">User will receive an email invitation to set their password via Supabase Auth.</div><button class="submit-btn" onclick="saveUser()">Create User →</button>`);
+}
+
+async function saveUser() {
+  const name=document.getElementById('cu_name').value.trim();
+  const user=document.getElementById('cu_user').value.trim().toLowerCase();
+  const email=document.getElementById('cu_email').value.trim();
+  if(!name||!user||!email) { toast('Name, username and email required','error'); return; }
+  if(!validateEmail(email)) { toast('Invalid email format','error'); return; }
+  if(state.db.profiles.some(u=>u.username===user)) { toast('Username taken','error'); return; }
+  
+  // In production, this would call a Supabase Edge Function to create the auth user
+  // For now, we just add the profile
+  state.db.profiles.push({
+    id:uid('USR'), name, username:user,
+    email: email,
+    role:  document.getElementById('cu_role').value,
+    active:true,
+    created: new Date().toISOString(), lastLogin: null,
+  });
+  scheduleSave();
+  addAudit(state.profile.username,'User Created', `${name} (${user})`);
+  closeModal(); renderUserMgmt();
+  toast(`${name} created. Send invitation email via Supabase Dashboard.`, 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 27  SETTINGS (with vault)
+────────────────────────────────────────────────────────────────── */
+function renderSettings() {
+  if (!state.settingsUnlocked) {
+    document.querySelector('#sec-settings .settings-grid').innerHTML = `<div class="vault-locked-banner" style="grid-column:1/-1"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83"/></svg><div><div class="title">Settings Vault Locked</div><div class="desc">System settings are protected. Enter vault password to access.</div></div></div>`;
+    return;
+  }
+  const total = Object.values(state.db).reduce((s,v)=>s+(Array.isArray(v)?v.length:0),0);
+  document.getElementById('totalRecords').textContent = total;
+  const bk = state.db.settings?.backupDate;
+  document.getElementById('lastBackup').textContent = bk ? fmtDate(bk) : 'Never';
+}
+
+function requireSettingsVault() {
+  if (state.settingsUnlocked) { showAdminSection('settings', document.getElementById('adminBtn-settings')); return; }
+  document.getElementById('settingsVaultOverlay').style.display = 'flex';
+  setTimeout(()=>document.getElementById('settingsVaultPin').focus(), 100);
+}
+
+function submitSettingsVault() {
+  const val = document.getElementById('settingsVaultPin').value;
+  if (val === SETTINGS_PASS) {
+    state.settingsUnlocked = true;
+    closeSettingsVault();
+    showAdminSection('settings', document.getElementById('adminBtn-settings'));
+    addAudit(state.profile.username,'Settings Vault','Unlocked');
+    toast('Settings vault unlocked', 'success');
+  } else {
+    document.getElementById('settingsVaultError').textContent = 'Incorrect password.';
+    document.getElementById('settingsVaultPin').value='';
+  }
+}
+
+function closeSettingsVault() {
+  document.getElementById('settingsVaultOverlay').style.display='none';
+  document.getElementById('settingsVaultPin').value='';
+  document.getElementById('settingsVaultError').textContent='';
+}
+
+function exportAllData() {
+  const json = JSON.stringify(state.db, null, 2);
+  const a    = document.createElement('a');
+  a.href     = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`;
+  a.download = `gargo-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  toast('Data exported','success');
+}
+
+function importData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 10*1024*1024) { toast('File too large. Max 10MB.', 'error'); return; }
+  const r = new FileReader();
+  r.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!data.trucks || !data.drivers) throw new Error('Invalid format');
+      state.db = data; scheduleSave(); buildBadges(); buildAlerts();
+      renderSection(state.currentSection);
+      toast('Data imported successfully','success');
+    } catch(err) { toast('Import failed — invalid file','error'); }
+  };
+  r.readAsText(file);
+  e.target.value='';
+}
+
+function createBackup() {
+  state.db.settings = state.db.settings || {};
+  state.db.settings.backupDate = new Date().toISOString();
+  scheduleSave(); exportAllData();
+  document.getElementById('lastBackup').textContent = fmtDate(state.db.settings.backupDate);
+  toast('Backup created','success');
+}
+
+function toggleDangerZone() {
+  const dz  = document.getElementById('dangerZone');
+  const btn = document.getElementById('dangerZoneToggle');
+  const open= dz.style.display==='none';
+  dz.style.display = open?'block':'none';
+  btn.textContent   = open ? '▲ Hide Danger Zone' : '▼ Show Danger Zone';
+}
+
+function clearAllData() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  openModal('Confirm: Clear All Data', `<div class="vault-banner"><div class="vault-banner-label">⚠ IRREVERSIBLE ACTION</div><div class="vault-banner-desc">This will permanently delete all trucks, drivers, trips, maintenance records, and financial data. This cannot be undone.</div></div><div class="fg"><label>Type CLEAR to confirm</label><input id="clearConfirm" placeholder="CLEAR" autocomplete="off"/></div><div style="display:flex;gap:8px;margin-top:10px"><button class="modal-btn danger" onclick="executeClearData()">Delete Everything</button><button class="modal-btn ghost" onclick="closeModal()">Cancel</button></div>`);
+}
+
+function executeClearData() {
+  if (document.getElementById('clearConfirm')?.value !== 'CLEAR') { toast('Type CLEAR to confirm','error'); return; }
+  state.db = seedData(); scheduleSave(); buildBadges(); buildAlerts();
+  closeModal(); renderSection(state.currentSection);
+  toast('All data cleared','warning');
+}
+
+function resetToSeed() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  if (!confirm('Reset to seed data? This will replace all data with sample data.')) return;
+  state.db = seedData(); scheduleSave(); buildBadges(); buildAlerts();
+  renderSection(state.currentSection);
+  toast('Reset to seed data','success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 28  VAULT & PIN FLOWS
+────────────────────────────────────────────────────────────────── */
+let _financePendingCb = null;
+function openFinanceLock(callback) {
+  if (state.financeUnlocked) { if (callback) callback(); return; }
+  _financePendingCb = callback;
+  document.getElementById('financeLockOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('financePin').focus(), 100);
+}
+
+function submitFinancePin() {
+  const pin = document.getElementById('financePin').value;
+  if (pin === FINANCE_PIN) {
+    state.financeUnlocked = true;
+    closeFinanceLock();
+    if (_financePendingCb) { _financePendingCb(); _financePendingCb=null; }
+    addAudit(state.profile.username,'Finance Vault','Unlocked');
+    toast('Finance vault unlocked', 'success');
+  } else {
+    document.getElementById('financePinError').textContent='Incorrect PIN.';
+    document.getElementById('financePin').value='';
+  }
+}
+
+function closeFinanceLock() {
+  document.getElementById('financeLockOverlay').style.display='none';
+  document.getElementById('financePin').value='';
+  document.getElementById('financePinError').textContent='';
+}
+
+function requireAdminAction(callback, actionKey) {
+  if (isAdmin()) { callback(); return; }
+  state.adminPinCallback = callback;
+  state.adminPinAction   = actionKey;
+  document.getElementById('adminPinDesc').textContent = `Admin credentials required to ${actionKey.replace('_',' ')}.`;
+  document.getElementById('adminPinOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('adminPinInput').focus(), 100);
+}
+
+function submitAdminPin() {
+  const pass = document.getElementById('adminPinInput').value;
+  if (pass === ADMIN_PASS) {
+    closeAdminPin();
+    if (state.adminPinCallback) { state.adminPinCallback(); state.adminPinCallback=null; }
+  } else {
+    document.getElementById('adminPinError').textContent='Incorrect password.';
+    document.getElementById('adminPinInput').value='';
+  }
+}
+
+function closeAdminPin() {
+  document.getElementById('adminPinOverlay').style.display='none';
+  document.getElementById('adminPinInput').value='';
+  document.getElementById('adminPinError').textContent='';
+  state.adminPinCallback=null;
+}
+
+function showChangePasswordModal() {
+  if (!state.currentUser) { toast('Not logged in', 'error'); return; }
+  openModal('Change Password', `
+    <div class="fg"><label>New Password</label>
+      <div class="pw-wrap"><input type="password" id="cp_new" placeholder="Min 6 characters"/></div>
+    </div>
+    <div class="fg"><label>Confirm New Password</label>
+      <div class="pw-wrap"><input type="password" id="cp_conf" placeholder="Confirm password"/></div>
+    </div>
+    <div class="login-error" id="cpError"></div>
+    <button class="submit-btn" onclick="submitChangePassword()">Change Password →</button>
+  `);
+}
+
+async function submitChangePassword() {
+  const neu = document.getElementById('cp_new').value;
+  const conf = document.getElementById('cp_conf').value;
+  const err = document.getElementById('cpError');
+
+  if (!neu || !conf) { err.textContent = 'All fields required'; return; }
+  if (neu.length < 6) { err.textContent = 'Password must be at least 6 characters'; return; }
+  if (neu !== conf) { err.textContent = 'Passwords do not match'; return; }
+
+  try {
+    const { error } = await supabase.auth.updateUser({ password: neu });
+    if (error) { err.textContent = 'Failed: ' + error.message; return; }
+    addAudit(state.profile.username, 'Password Changed', 'Self-service change');
+    closeModal();
+    toast('Password updated successfully', 'success');
+  } catch (e) {
+    err.textContent = 'Connection error';
+  }
+}
+/* ──────────────────────────────────────────────────────────────────
+   § 29  GENERAL MODAL
+────────────────────────────────────────────────────────────────── */
+function openModal(title, body) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML    = body;
+  document.getElementById('modalOverlay').classList.add('active');
+}
+
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modalOverlay')) return;
+  document.getElementById('modalOverlay').classList.remove('active');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 30  GLOBAL SEARCH
+────────────────────────────────────────────────────────────────── */
+let _searchDebounce = null;
+document.addEventListener('DOMContentLoaded', ()=>{
+  const inp = document.getElementById('globalSearch');
+  if (inp) {
+    inp.addEventListener('input', ()=>{
+      clearTimeout(_searchDebounce);
+      _searchDebounce = setTimeout(()=>liveSearch(inp.value), 200);
+    });
+    inp.addEventListener('blur', ()=> setTimeout(()=>{ const p=document.getElementById('searchResults'); if(p)p.style.display='none'; }, 200));
+    inp.addEventListener('focus', ()=>{ if(inp.value) liveSearch(inp.value); });
+  }
+});
+
+function liveSearch(q) {
+  const panel = document.getElementById('searchResults');
+  if (!q || q.length < 2) { panel.style.display='none'; return; }
+  const results = [];
+  const db = state.db;
+  q = q.toLowerCase().trim();
+  db.trucks.filter(t=>t.reg.toLowerCase().includes(q)||t.make.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+    results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:t.status, fn: `showTruckDetail('${t.id}')` });
+  });
+  db.drivers.filter(d=>d.name.toLowerCase().includes(q)||d.phone.includes(q)).slice(0,3).forEach(d=>{
+    results.push({ type:'Driver', label:d.name, sub:d.status, fn: `showDriverDetail('${d.id}')` });
+  });
+  db.trips.filter(t=>t.container.toLowerCase().includes(q)||t.origin.toLowerCase().includes(q)||t.dest.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+    results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:t.status, fn: `showTripDetail('${t.id}')` });
+  });
+  db.invoices.filter(i=>i.client.toLowerCase().includes(q)||i.ref.toLowerCase().includes(q)).slice(0,2).forEach(i=>{
+    results.push({ type:'Invoice', label: `${i.ref} — ${i.client}`, sub:i.status, fn: `showInvoiceDetail('${i.id}')` });
+  });
+  panel.innerHTML = results.length
+    ? results.map(r=>`<div class="search-result-item" onclick="${r.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''"><span class="search-result-type">${r.type}</span><div><div style="font-size:12px;color:var(--text)">${r.label}</div><div style="font-size:10px;color:var(--text-3)">${r.sub}</div></div></div>`).join('')
+    : `<div style="padding:12px 16px;font-size:11.5px;color:var(--text-3)">No results for "${q}"</div>`;
+  panel.style.display='block';
+}
+
+function handleSearch(q) {
+  document.getElementById('searchResults').style.display='none';
+  liveSearch(q);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 31  USER MENU
+────────────────────────────────────────────────────────────────── */
+function toggleUserMenu() {
+  const m = document.getElementById('userMenu');
+  if (m) m.style.display = m.style.display==='none' ? 'block' : 'none';
+}
+
+function closeUserMenu() {
+  const m = document.getElementById('userMenu');
+  if (m) m.style.display='none';
+}
+
+document.addEventListener('click', e=>{
+  const chip = document.querySelector('.user-chip-rail');
+  const menu = document.getElementById('userMenu');
+  if (menu && chip && !chip.contains(e.target) && !menu.contains(e.target)) {
+    menu.style.display='none';
+  }
+  const results = document.getElementById('searchResults');
+  const search  = document.querySelector('.search-wrap');
+  if (results && search && !search.contains(e.target)) {
+    results.style.display='none';
+  }
+});
+
+/* ──────────────────────────────────────────────────────────────────
+   § 32  POPULATING SELECTS
+────────────────────────────────────────────────────────────────── */
+function populateSelects() {
+  fillSelect('f_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.make}`]);
+  fillSelect('f_driver', state.db.drivers, d=>[d.id, d.name]);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 33  IDLE TIMER & AUTO-LOCK
+────────────────────────────────────────────────────────────────── */
+function startIdleTimer() {
+  clearIdleTimer();
+  const resetIdle = ()=>{ state.lastActivity = Date.now(); };
+  ['mousemove','keydown','click','scroll','touchstart'].forEach(ev=>document.addEventListener(ev, resetIdle, { passive:true }));
+  state.idleTimer = setInterval(()=>{
+    if (Date.now() - state.lastActivity > IDLE_TIMEOUT) {
+      clearIdleTimer();
+      toast('Session timed out — please sign in again','warning',5000);
+      setTimeout(logout, 2000);
+    }
+  }, 60000);
+}
+
+function clearIdleTimer() {
+  if (state.idleTimer) clearInterval(state.idleTimer);
+  state.idleTimer = null;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 34  LIVE PULSE
+────────────────────────────────────────────────────────────────── */
+function startLivePulse() {
+  setInterval(()=>{
+    state.db.trucks.filter(t=>t.status==='on_trip').forEach(t=>{
+      t.fuelPct = Math.max(0, t.fuelPct - 0.1);
+    });
+    Object.keys(state.db.trackingPositions).forEach(id=>{
+      const p=state.db.trackingPositions[id];
+      if (p.speed>0) {
+        p.lat += (Math.random()-0.5)*0.0001;
+        p.lng += (Math.random()-0.5)*0.0001;
+        p.lastUpdate = new Date().toISOString();
+      }
+    });
+    buildAlerts();
+    if (state.currentSection==='dashboard') renderDashboard();
+    if (state.currentSection==='livetracking') renderTracking();
+  }, 30000);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 35  AUDIT LOG HELPER
+────────────────────────────────────────────────────────────────── */
+function addAudit(user, action, detail) {
+  if (!user) user = 'system';
+  const log = state.db.auditLog || [];
+  log.unshift({ id:uid('AUD'), user, action, detail, time: new Date().toISOString() });
+  if (log.length > 500) log.splice(500);
+  state.db.auditLog = log;
+  scheduleSave();
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 36  KEYBOARD SHORTCUTS
+────────────────────────────────────────────────────────────────── */
+document.addEventListener('keydown', e=>{
+  if (!state.currentUser) return;
+  if (e.key==='Escape') {
+    closeModal();
+    closeUserMenu();
+    const p=document.getElementById('searchResults'); if(p)p.style.display='none';
+  }
+  if ((e.ctrlKey||e.metaKey) && e.key==='k') {
+    e.preventDefault();
+    document.getElementById('globalSearch')?.focus();
+  }
+  if ((e.ctrlKey||e.metaKey) && e.key==='/') {
+    e.preventDefault();
+    toggleSidebar();
+  }
+});
+
+/* ──────────────────────────────────────────────────────────────────
+   § 37  INVOICE VAULT GUARD
+────────────────────────────────────────────────────────────────── */
+const origShowAdminSection = window.showAdminSection || showAdminSection;
+window.showAdminSection = function(sec, btn) {
+  if (sec==='invoicing' && !state.financeUnlocked) {
+    openFinanceLock(()=>{
+      origShowAdminSection(sec, btn || document.getElementById('adminBtn-invoicing'));
+      renderInvoicing(_invFilter);
+    });
+    return;
+  }
+  origShowAdminSection(sec, btn);
+};
+
+/* ──────────────────────────────────────────────────────────────────
+   § 38  BOOTSTRAP
+────────────────────────────────────────────────────────────────── */
+(function init() {
+  try {
+    runLoader();
+  } catch(e) {
+    console.error('Initialization error:', e);
+    toast('System initialization error. Please refresh.', 'error');
+  }
+})();

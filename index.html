@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gargo · Fleet Operations</title>
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+    <!-- ═══════════ LOADER ═══════════ -->
+    <div class="loader" id="loader">
+        <div class="loader-inner">
+            <div class="loader-emblem">
+                <svg width="56" height="56" viewBox="0 0 48 48" fill="none">
+                    <polygon points="24,4 44,16 44,32 24,44 4,32 4,16" stroke="#C9A227" stroke-width="1.5" fill="none" opacity="0.3"/>
+                    <polygon points="24,10 38,18 38,30 24,38 10,30 10,18" stroke="#C9A227" stroke-width="1" fill="none" opacity="0.55"/>
+                    <polygon points="24,16 32,20 32,28 24,32 16,28 16,20" stroke="#C9A227" stroke-width="0.8" fill="none" opacity="0.8"/>
+                    <text x="24" y="28" text-anchor="middle" font-family="'Cormorant Garamond',serif" font-size="11" font-weight="700" fill="#C9A227" letter-spacing="2">G</text>
+                </svg>
+            </div>
+            <div class="loader-wordmark">GARGO</div>
+            <div class="loader-tagline">FLEET OPERATIONS SYSTEM · MOMBASA</div>
+            <div class="loader-bar-wrap"><div class="loader-bar"><div class="loader-fill" id="loaderFill"></div></div></div>
+            <div class="loader-status" id="loaderStatus">Connecting to Supabase…</div>
+        </div>
+    </div>
+
+    <!-- ═══════════ LOGIN ═══════════ -->
+    <div id="loginScreen" style="display:none">
+        <div class="login-split">
+            <div class="login-panel-left">
+                <div class="login-left-brand">
+                    <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+                        <polygon points="24,4 44,16 44,32 24,44 4,32 4,16" stroke="#C9A227" stroke-width="1.5" fill="none" opacity="0.4"/>
+                        <polygon points="24,10 38,18 38,30 24,38 10,30 10,18" stroke="#C9A227" stroke-width="1" fill="none" opacity="0.65"/>
+                        <text x="24" y="28" text-anchor="middle" font-family="'Cormorant Garamond',serif" font-size="11" font-weight="700" fill="#C9A227" letter-spacing="2">G</text>
+                    </svg>
+                    <div>
+                        <div class="login-brand-name">GARGO</div>
+                        <div class="login-brand-sub">FLEET OPERATIONS</div>
+                    </div>
+                </div>
+                <div class="login-left-copy">
+                    <div class="login-stat-row">
+                        <div class="login-stat"><div class="login-stat-n" id="ls-fleet">—</div><div class="login-stat-l">Fleet Trucks</div></div>
+                        <div class="login-stat"><div class="login-stat-n" id="ls-drivers">—</div><div class="login-stat-l">Drivers</div></div>
+                        <div class="login-stat"><div class="login-stat-n" id="ls-trips">—</div><div class="login-stat-l">Active Trips</div></div>
+                    </div>
+                    <p class="login-blurb">Gargo Fleet Operations — Mombasa's leading container haulage management platform. Real-time dispatch, allocation, and compliance in one secure system.</p>
+                </div>
+                <div class="login-left-foot">gargo.co.ke · Mombasa, Kenya · EAT (UTC+3)</div>
+            </div>
+            <div class="login-panel-right">
+                <div class="login-form-wrap">
+                    <div class="login-form-head">
+                        <div class="login-form-title">Sign in</div>
+                        <div class="login-form-sub">Authorized personnel only</div>
+                    </div>
+                    <div class="login-field">
+                        <label>Username</label>
+                        <input type="text" id="loginUser" placeholder="Enter username" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()" />
+                    </div>
+                    <div class="login-field">
+                        <label>Password</label>
+                        <div class="pw-wrap">
+                            <input type="password" id="loginPass" placeholder="Enter password" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()" />
+                            <button class="pw-eye" type="button" onclick="togglePwVis('loginPass',this)" tabindex="-1" aria-label="Show password">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="login-btn" onclick="doLogin()">
+                        Sign In
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    </button>
+                    <div class="login-error" id="loginError"></div>
+                    <div class="login-demo-hint">Use your email and password to sign in</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════ SHELL ═══════════ -->
+    <div class="shell" id="shell" style="display:none">
+
+        <!-- ══ TOP COMMAND RAIL ══ -->
+        <div class="admin-rail" id="adminRail">
+            <div class="admin-rail-left">
+                <div class="rail-brand">
+                    <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
+                        <polygon points="24,4 44,16 44,32 24,44 4,32 4,16" stroke="#C9A227" stroke-width="2" fill="none" opacity="0.5"/>
+                        <polygon points="24,10 38,18 38,30 24,38 10,30 10,18" stroke="#C9A227" stroke-width="1.2" fill="none" opacity="0.7"/>
+                        <text x="24" y="28" text-anchor="middle" font-family="'Cormorant Garamond',serif" font-size="13" font-weight="700" fill="#C9A227">G</text>
+                    </svg>
+                    <span class="rail-brand-name">GARGO</span>
+                    <span class="rail-brand-sep">·</span>
+                    <span class="rail-brand-sub">Fleet Ops</span>
+                </div>
+                <nav class="admin-nav" id="adminNav">
+                    <div class="admin-nav-group">
+                        <span class="admin-nav-group-label">Finance</span>
+                        <button class="admin-nav-item" onclick="showAdminSection('invoicing',this)" id="adminBtn-invoicing">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                            Invoicing
+                            <span class="rail-badge" id="badge-invoices"></span>
+                            <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </button>
+                    </div>
+                    <div class="admin-nav-group">
+                        <span class="admin-nav-group-label">Intelligence</span>
+                        <button class="admin-nav-item" onclick="showAdminSection('allocation',this)" id="adminBtn-allocation">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                            Allocation
+                        </button>
+                        <button class="admin-nav-item" onclick="showAdminSection('workanalysis',this)" id="adminBtn-workanalysis">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                            Analysis
+                        </button>
+                        <button class="admin-nav-item" onclick="showAdminSection('reports',this)" id="adminBtn-reports">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                            Reports
+                        </button>
+                    </div>
+                    <div class="admin-nav-group">
+                        <span class="admin-nav-group-label">Platform</span>
+                        <button class="admin-nav-item" onclick="showAdminSection('livetracking',this)" id="adminBtn-livetracking">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            Live Tracking
+                        </button>
+                        <button class="admin-nav-item" onclick="showAdminSection('usermgmt',this)" id="adminBtn-usermgmt">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                            Users
+                            <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </button>
+                        <button class="admin-nav-item" onclick="requireSettingsVault()" id="adminBtn-settings">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.6 9"/></svg>
+                            Settings
+                            <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </button>
+                    </div>
+                </nav>
+            </div>
+            <div class="admin-rail-right">
+                <div class="rail-live">
+                    <div class="live-dot"></div>
+                    <div class="rail-clock" id="liveTime">--:--</div>
+                    <div class="rail-tz">EAT</div>
+                </div>
+                <div class="search-wrap">
+                    <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input class="search-input" id="globalSearch" placeholder="Search trucks, drivers, containers…" onkeydown="if(event.key==='Enter')handleSearch(this.value)" />
+                    <div class="search-results-panel" id="searchResults" style="display:none"></div>
+                </div>
+                <button class="rail-alert-btn" onclick="toggleAlerts()" title="Alerts" id="alertBtn">
+                    <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                    <div class="alert-dot" id="alertDot" style="display:none"></div>
+                </button>
+                <div class="user-chip-rail" onclick="toggleUserMenu()">
+                    <div class="user-av-rail" id="railUserAv">AD</div>
+                    <div class="user-info-rail">
+                        <div class="user-name-rail" id="railUserName">Admin</div>
+                        <div class="user-role-rail" id="railUserRole">System Administrator</div>
+                    </div>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.4"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="user-menu" id="userMenu" style="display:none">
+                    <div class="user-menu-header" id="userMenuHeader"></div>
+                    <div class="user-menu-divider"></div>
+                    <div class="user-menu-item" onclick="showAdminSection('usermgmt',null);closeUserMenu()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                        Manage Users
+                    </div>
+                    <div class="user-menu-item" onclick="showChangePasswordModal();closeUserMenu()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        Change Password
+                    </div>
+                    <div class="user-menu-divider"></div>
+                    <div class="user-menu-item danger" onclick="logout()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                        Sign Out
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══ BODY ══ -->
+        <div class="body-wrap">
+
+            <!-- ══ OPS SIDEBAR ══ -->
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-section-head">
+                    <div class="sidebar-section-label">Operations Centre</div>
+                </div>
+
+                <nav class="sidebar-nav">
+                    <button class="nav-item active" onclick="showSection('dashboard',this)" data-section="dashboard">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                        Dashboard
+                    </button>
+
+                    <div class="nav-group-label">Fleet Management</div>
+                    <button class="nav-item" onclick="showSection('trucks',this)" data-section="trucks">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                        Trucks <span class="nav-badge" id="badge-trucks"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('drivers',this)" data-section="drivers">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Drivers <span class="nav-badge" id="badge-drivers"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('trips',this)" data-section="trips">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Active Trips <span class="nav-badge" id="badge-trips"></span>
+                    </button>
+
+                    <div class="nav-group-label">Operations</div>
+                    <button class="nav-item" onclick="showSection('dispatch',this)" data-section="dispatch">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        Dispatch Console
+                    </button>
+                    <button class="nav-item" onclick="showSection('maintenance',this)" data-section="maintenance">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+                        Maintenance <span class="nav-badge warn" id="badge-maintenance"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('fuel',this)" data-section="fuel">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 22V4a2 2 0 012-2h10a2 2 0 012 2v18"/><path d="M3 10h14"/><path d="M17 8l4 2v8a2 2 0 01-2 2"/></svg>
+                        Fuel Log
+                    </button>
+
+                    <div class="nav-group-label">Container Ops</div>
+                    <button class="nav-item" onclick="showSection('shutout',this)" data-section="shutout">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+                        Shutout <span class="nav-badge" id="badge-shutout"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('interchange',this)" data-section="interchange">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+                        Interchange <span class="nav-badge" id="badge-interchange"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('shippinglines',this)" data-section="shippinglines">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M2 20a3 3 0 003 3h14a3 3 0 003-3"/><path d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v5"/><path d="M2 12h20"/></svg>
+                        Shipping Lines
+                    </button>
+
+                    <div class="nav-group-label">Compliance</div>
+                    <button class="nav-item" onclick="showSection('requisitions',this)" data-section="requisitions">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        Requisitions <span class="nav-badge" id="badge-requisitions"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('workshop',this)" data-section="workshop">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                        Workshop
+                    </button>
+                </nav>
+
+                <div class="sidebar-footer">
+                    <div class="sidebar-footer-label">GARGO FLEET OPS · v4.0</div>
+                    <div class="sidebar-footer-status">
+                        <div class="live-dot"></div>
+                        <span>System live</span>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- ══ CONTENT AREA ══ -->
+            <main class="main">
+                <div class="section-topbar" id="sectionTopbar">
+                    <div class="section-topbar-left">
+                        <button class="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button>
+                        <div class="section-breadcrumb">
+                            <span class="breadcrumb-area" id="topbarArea">Operations</span>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"><polyline points="9 18 15 12 9 6"/></svg>
+                            <span class="breadcrumb-title" id="topbarTitle">Dashboard</span>
+                        </div>
+                    </div>
+                    <div class="section-topbar-right">
+                        <div class="topbar-date" id="todayDate"></div>
+                        <div class="role-chip" id="topbarRoleChip"></div>
+                    </div>
+                </div>
+
+                <!-- ALERTS PANEL -->
+                <div class="alerts-panel" id="alertsPanel">
+                    <div class="alerts-title">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                        Active Alerts
+                        <button class="alert-close-btn" onclick="toggleAlerts()">✕</button>
+                    </div>
+                    <div id="alertsList"></div>
+                </div>
+
+                <!-- ══ SECTIONS ══ -->
+                <div class="content">
+
+                    <!-- DASHBOARD -->
+                    <section class="section active" id="sec-dashboard">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Operations Overview</div>
+                            <div class="filter-row">
+                                <button class="pill active" onclick="filterActivity('all',this)">All</button>
+                                <button class="pill" onclick="filterActivity('dispatch',this)">Dispatch</button>
+                                <button class="pill" onclick="filterActivity('return',this)">Returns</button>
+                                <button class="pill" onclick="filterActivity('issue',this)">Issues</button>
+                            </div>
+                        </div>
+                        <div class="kpi-row" id="kpiRow"></div>
+                        <div class="two-col-grid">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Fleet Status</span><span class="panel-meta" id="fleetStatusMeta"></span></div>
+                                <div id="fleetStatusBars"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Live Trips</span><span class="panel-meta" id="liveTripsCount"></span></div>
+                                <div id="liveTrips"></div>
+                            </div>
+                        </div>
+                        <div class="two-col-grid">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Today's Activity</span></div>
+                                <div id="activityList"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Maintenance Alerts</span></div>
+                                <div id="maintAlerts"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- TRUCKS -->
+                    <section class="section" id="sec-trucks">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Fleet — Trucks</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterTrucks('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterTrucks('available',this)">Available</button>
+                                <button class="filter-btn" onclick="filterTrucks('on_trip',this)">On Trip</button>
+                                <button class="filter-btn" onclick="filterTrucks('breakdown',this)">Breakdown</button>
+                                <button class="filter-btn" onclick="filterTrucks('maintenance',this)">Maintenance</button>
+                                <button class="filter-btn" onclick="filterTrucks('off_duty',this)">Off Duty</button>
+                                <button class="action-btn admin-only-btn" onclick="requireAdminAction(showAddTruckModal,'add_truck')" id="addTruckBtn">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    Add Truck
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="truck-grid" id="truckGrid"></div>
+                    </section>
+
+                    <!-- DRIVERS -->
+                    <section class="section" id="sec-drivers">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Fleet — Drivers</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterDrivers('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterDrivers('available',this)">Available</button>
+                                <button class="filter-btn" onclick="filterDrivers('on_trip',this)">On Trip</button>
+                                <button class="filter-btn" onclick="filterDrivers('off_duty',this)">Off Duty</button>
+                                <button class="filter-btn" onclick="filterDrivers('suspended',this)">Suspended</button>
+                                <button class="action-btn admin-only-btn" onclick="requireAdminAction(showAddDriverModal,'add_driver')">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    Add Driver
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="panel">
+                            <div class="table-wrap">
+                                <table class="data-table">
+                                    <thead><tr>
+                                            <th>Driver</th><th>Phone</th><th>Licence</th><th>Assigned Truck</th>
+                                            <th>Status</th><th>Trips Today</th><th>Current Load</th><th>Location</th><th></th>
+                                        </tr></thead>
+                                    <tbody id="driverTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- TRIPS -->
+                    <section class="section" id="sec-trips">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Active Trips</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterTrips('active',this)">Active</button>
+                                <button class="filter-btn" onclick="filterTrips('all',this)">Today</button>
+                                <button class="filter-btn" onclick="filterTrips('completed',this)">Completed</button>
+                                <button class="filter-btn" onclick="filterTrips('delayed',this)">Delayed</button>
+                            </div>
+                        </div>
+                        <div class="trips-grid" id="tripsList"></div>
+                    </section>
+
+                    <!-- DISPATCH -->
+                    <section class="section" id="sec-dispatch">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Dispatch Console</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="switchDispatchTab('single',this)">Single Dispatch</button>
+                                <button class="filter-btn" onclick="switchDispatchTab('bulk',this)">Bulk Upload</button>
+                            </div>
+                        </div>
+                        <!-- Single Dispatch Tab -->
+                        <div id="dispatchTabSingle">
+                            <div class="dispatch-layout">
+                                <div class="form-card">
+                                    <div class="form-card-head">New Dispatch Order</div>
+                                    <div class="form-card-body">
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Truck</label><select id="d_truck"></select></div>
+                                            <div class="fg"><label>Driver</label><select id="d_driver"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Container No.</label><input id="d_container" placeholder="ABCD1234567" /></div>
+                                            <div class="fg"><label>Container Type</label>
+                                                <select id="d_ctype">
+                                                    <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
+                                                    <option>20ft Reefer</option><option>40ft Reefer</option>
+                                                    <option>Flat Rack</option><option>Open Top</option><option>Tank</option><option>Hazmat</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Work Type</label>
+                                                <select id="d_worktype">
+                                                    <option>Port → Depot</option><option>Depot → Port</option><option>Depot → Depot</option>
+                                                    <option>Client → Depot</option><option>Depot → Client</option>
+                                                    <option>Port → CFS</option><option>CFS → Port</option>
+                                                    <option>Client → Port</option><option>Yard Move</option>
+                                                </select>
+                                            </div>
+                                            <div class="fg"><label>Shipping Line</label><select id="d_line"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Origin</label><input id="d_origin" placeholder="Kilindini Port" /></div>
+                                            <div class="fg"><label>Destination</label><input id="d_dest" placeholder="Client Depot" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Distance (km)</label><input id="d_distance" type="number" placeholder="25" /></div>
+                                            <div class="fg"><label>Priority</label>
+                                                <select id="d_priority"><option>Normal</option><option>High</option><option>Urgent</option></select>
+                                            </div>
+                                        </div>
+                                        <div class="fg"><label>Client Reference</label><input id="d_ref" placeholder="BL / Booking ref" /></div>
+                                        <div class="fg"><label>Notes</label><textarea id="d_notes" rows="2" placeholder="Special instructions…"></textarea></div>
+                                        <!-- Container Image Upload -->
+                                        <div class="fg">
+                                            <label>Container Image <span class="label-optional">(optional)</span></label>
+                                            <div class="file-upload-area" id="containerImgUpload" onclick="document.getElementById('d_container_img').click()">
+                                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                                <span id="containerImgLabel">Upload container photo</span>
+                                            </div>
+                                            <input type="file" id="d_container_img" accept="image/*" style="display:none" onchange="previewContainerImg(event)" />
+                                        </div>
+                                        <div id="containerImgPreview" style="display:none;margin-bottom:10px">
+                                            <img id="containerImgThumb" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" />
+                                            <button class="pill" style="margin-top:6px;font-size:10px" onclick="clearContainerImg()">✕ Remove image</button>
+                                        </div>
+                                        <button class="submit-btn" onclick="createDispatch()">Create Dispatch Order →</button>
+                                    </div>
+                                </div>
+                                <div id="dispatchQueue"></div>
+                            </div>
+                        </div>
+                        <!-- Bulk Upload Tab -->
+                        <div id="dispatchTabBulk" style="display:none">
+                            <div class="form-card" style="max-width:600px">
+                                <div class="form-card-head">Bulk Container Dispatch</div>
+                                <div class="form-card-body">
+                                    <div class="dispatch-bulk-info">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                        Upload a CSV or JSON file with container dispatch data. Each row should include: container, truck, driver, origin, destination, work type, and distance.
+                                    </div>
+                                    <div class="file-upload-area large" id="bulkDispatchDrop" onclick="document.getElementById('bulkDispatchFile').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleBulkDrop(event)">
+                                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        <div class="upload-label">Drop CSV or JSON here</div>
+                                        <div class="upload-sub">or click to browse · max 5MB</div>
+                                    </div>
+                                    <input type="file" id="bulkDispatchFile" accept=".csv,.json" style="display:none" onchange="handleBulkFile(event)" />
+                                    <div id="bulkDispatchPreview" style="display:none">
+                                        <div class="panel" style="margin-top:14px">
+                                            <div class="panel-head"><span class="panel-title">Preview</span><span class="panel-meta" id="bulkRowCount"></span></div>
+                                            <div class="table-wrap"><table class="data-table" id="bulkPreviewTable"><thead></thead><tbody></tbody></table></div>
+                                        </div>
+                                        <button class="submit-btn" onclick="processBulkDispatch()">Process All Dispatches →</button>
+                                    </div>
+                                    <div class="bulk-template-row">
+                                        <button class="action-btn ghost" onclick="downloadBulkTemplate()">⬇ Download CSV Template</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- MAINTENANCE -->
+                    <section class="section" id="sec-maintenance">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Maintenance Log</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterMaint('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterMaint('open',this)">Open</button>
+                                <button class="filter-btn" onclick="filterMaint('in_progress',this)">In Progress</button>
+                                <button class="filter-btn" onclick="filterMaint('resolved',this)">Resolved</button>
+                                <button class="action-btn" onclick="showMaintModal()">+ Log Issue</button>
+                            </div>
+                        </div>
+                        <div id="maintList"></div>
+                    </section>
+
+                    <!-- FUEL -->
+                    <section class="section" id="sec-fuel">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Fuel Log</div>
+                        </div>
+                        <div class="dispatch-layout">
+                            <div class="form-card">
+                                <div class="form-card-head">Log Fuel Fill</div>
+                                <div class="form-card-body">
+                                    <div class="fg"><label>Truck</label><select id="f_truck"></select></div>
+                                    <div class="fg"><label>Driver</label><select id="f_driver"></select></div>
+                                    <div class="form-row-2">
+                                        <div class="fg"><label>Litres</label><input id="f_litres" type="number" placeholder="0" /></div>
+                                        <div class="fg"><label>Price/Litre (KSh)</label><input id="f_price" type="number" placeholder="0" /></div>
+                                    </div>
+                                    <div class="fg"><label>Station</label><input id="f_station" placeholder="Kobil Mombasa" /></div>
+                                    <div class="fg"><label>Odometer</label><input id="f_odo" type="number" placeholder="0" /></div>
+                                    <div class="fg"><label>Receipt No.</label><input id="f_receipt" placeholder="RCPT-001" /></div>
+                                    <button class="submit-btn" onclick="addFuelLog()">Log Fill →</button>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="panel" id="fuelSummaryPanel">
+                                    <div class="panel-head"><span class="panel-title">Fuel Summary</span></div>
+                                    <div id="fuelSummary"></div>
+                                </div>
+                                <div class="panel" style="margin-top:14px">
+                                    <div class="panel-head"><span class="panel-title">Recent Fills</span></div>
+                                    <div class="table-wrap">
+                                        <table class="data-table">
+                                            <thead><tr><th>Date</th><th>Truck</th><th>Driver</th><th>Litres</th><th>KSh/L</th><th style="text-align:right">Total</th><th>Station</th></tr></thead>
+                                            <tbody id="fuelTableBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- SHUTOUT -->
+                    <section class="section" id="sec-shutout">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Shutout Container Handling</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterShutout('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterShutout('open',this)">Open</button>
+                                <button class="filter-btn" onclick="filterShutout('redelivery',this)">Redelivery</button>
+                                <button class="filter-btn" onclick="filterShutout('resolved',this)">Resolved</button>
+                                <button class="action-btn" onclick="showAddShutoutModal()">+ Flag Shutout</button>
+                            </div>
+                        </div>
+                        <div id="shutoutList"></div>
+                    </section>
+
+                    <!-- INTERCHANGE -->
+                    <section class="section" id="sec-interchange">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Interchange Management</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterInterchange('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterInterchange('pending',this)">Pending</button>
+                                <button class="filter-btn" onclick="filterInterchange('approved',this)">Approved</button>
+                                <button class="filter-btn" onclick="filterInterchange('reconciled',this)">Reconciled</button>
+                                <button class="action-btn" onclick="showAddInterchangeModal()">+ Record Interchange</button>
+                            </div>
+                        </div>
+                        <div id="interchangeList"></div>
+                    </section>
+
+                    <!-- SHIPPING LINES -->
+                    <section class="section" id="sec-shippinglines">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Shipping Lines</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterLines('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterLines('active',this)">Active</button>
+                                <button class="action-btn" onclick="showAddLineModal()">+ Add Line</button>
+                            </div>
+                        </div>
+                        <div class="two-col-grid"><div id="linesSummary"></div><div></div></div>
+                        <div class="truck-grid" id="linesGrid" style="margin-top:14px"></div>
+                    </section>
+
+                    <!-- REQUISITIONS (OPS VIEW — no approve button) -->
+                    <section class="section" id="sec-requisitions">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Requisitions</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterRequisitions('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterRequisitions('pending',this)">Pending</button>
+                                <button class="filter-btn" onclick="filterRequisitions('approved',this)">Approved</button>
+                                <button class="filter-btn" onclick="filterRequisitions('rejected',this)">Rejected</button>
+                                <button class="filter-btn" onclick="filterRequisitions('fulfilled',this)">Fulfilled</button>
+                                <button class="action-btn" onclick="showAddRequisitionModal()">+ New Requisition</button>
+                            </div>
+                        </div>
+                        <div class="ops-notice">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            Requisition approvals are handled in the Admin → Allocation section. Submit requisitions here for admin review.
+                        </div>
+                        <div id="reqList"></div>
+                    </section>
+
+                    <!-- WORKSHOP (OPS VIEW — no approve button) -->
+                    <section class="section" id="sec-workshop">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Workshop</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterWorkshop('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterWorkshop('reported',this)">Reported</button>
+                                <button class="filter-btn" onclick="filterWorkshop('diagnosed',this)">Diagnosed</button>
+                                <button class="filter-btn" onclick="filterWorkshop('in_progress',this)">In Progress</button>
+                                <button class="filter-btn" onclick="filterWorkshop('completed',this)">Completed</button>
+                                <button class="action-btn" onclick="showAddWorkshopJobModal()">+ New Job Card</button>
+                            </div>
+                        </div>
+                        <div class="ops-notice">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            Workshop job card approvals and status advances are handled in the Admin section only.
+                        </div>
+                        <div id="workshopList"></div>
+                    </section>
+
+                    <!-- ══ ADMIN SECTIONS ══ -->
+
+                    <!-- INVOICING -->
+                    <section class="section" id="sec-invoicing">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                Invoicing &amp; Billing
+                            </div>
+                            <div class="filter-row" id="invoicingToolbar">
+                                <button class="filter-btn active" onclick="filterInvoices('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterInvoices('draft',this)">Draft</button>
+                                <button class="filter-btn" onclick="filterInvoices('sent',this)">Sent</button>
+                                <button class="filter-btn" onclick="filterInvoices('paid',this)">Paid</button>
+                                <button class="filter-btn" onclick="filterInvoices('partial',this)">Partial</button>
+                                <button class="filter-btn" onclick="filterInvoices('overdue',this)">Overdue</button>
+                                <button class="action-btn" onclick="showCreateInvoiceModal()">+ Create Invoice</button>
+                                <button class="action-btn ghost" onclick="autoGenerateInvoices()">Auto-Generate</button>
+                                <button class="action-btn ghost" onclick="showBillingRatesModal()">⚙ Billing Rates</button>
+                                <button class="action-btn ghost" onclick="lockFinance()">🔒 Lock Vault</button>
+                            </div>
+                        </div>
+                        <div class="inv-kpi-reveal-bar" id="invKpiRevealBar">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                            <span>Financial summary is hidden for security.</span>
+                            <button class="inv-reveal-btn" onclick="revealInvKpis()">Reveal with PIN →</button>
+                        </div>
+                        <div class="kpi-row" id="invKpis" style="display:none"></div>
+                        <div id="invoicesList"></div>
+                    </section>
+
+                    <!-- ALLOCATION -->
+                    <section class="section" id="sec-allocation">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">Allocation Engine</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="switchAllocTab('auto',this)">Auto-Allocation</button>
+                                <button class="filter-btn" onclick="switchAllocTab('manual',this)">Manual Allocation</button>
+                                <button class="filter-btn" onclick="switchAllocTab('requisitions',this)">Requisition Approvals</button>
+                                <button class="filter-btn" onclick="switchAllocTab('workshop',this)">Workshop Approvals</button>
+                            </div>
+                        </div>
+                        <!-- Auto Allocation -->
+                        <div id="allocTabAuto">
+                            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+                                <button class="action-btn" onclick="runAllocation()">Run Auto-Allocation</button>
+                                <button class="action-btn ghost" onclick="showAllocationRulesModal()">Configure Rules</button>
+                            </div>
+                            <div class="kpi-row" id="allocKpis"></div>
+                            <div class="two-col-grid">
+                                <div class="panel">
+                                    <div class="panel-head"><span class="panel-title">Pending Dispatches</span></div>
+                                    <div id="allocQueue"></div>
+                                </div>
+                                <div class="panel">
+                                    <div class="panel-head"><span class="panel-title">Allocation Rules</span></div>
+                                    <div id="allocRules"></div>
+                                </div>
+                            </div>
+                            <div class="panel" style="margin-top:14px">
+                                <div class="panel-head"><span class="panel-title">Recommended Assignments</span></div>
+                                <div id="allocRecommendations"></div>
+                            </div>
+                        </div>
+                        <!-- Manual Allocation -->
+                        <div id="allocTabManual" style="display:none">
+                            <div class="two-col-grid">
+                                <div class="form-card">
+                                    <div class="form-card-head">Assign Driver to Truck</div>
+                                    <div class="form-card-body">
+                                        <div class="fg"><label>Select Truck</label><select id="ma_truck"></select></div>
+                                        <div class="fg"><label>Select Driver</label><select id="ma_driver"></select></div>
+                                        <div class="fg"><label>Notes</label><input id="ma_notes" placeholder="Assignment notes…" /></div>
+                                        <button class="submit-btn" onclick="manualAssignDriverToTruck()">Assign Driver to Truck →</button>
+                                    </div>
+                                </div>
+                                <div class="form-card">
+                                    <div class="form-card-head">Assign Container to Trip</div>
+                                    <div class="form-card-body">
+                                        <div class="fg"><label>Active Trip</label><select id="ma_trip"></select></div>
+                                        <div class="fg"><label>Container Number</label><input id="ma_container" placeholder="ABCD1234567" /></div>
+                                        <div class="fg"><label>Container Type</label>
+                                            <select id="ma_ctype">
+                                                <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
+                                                <option>20ft Reefer</option><option>40ft Reefer</option><option>Flat Rack</option><option>Tank</option>
+                                            </select>
+                                        </div>
+                                        <button class="submit-btn" onclick="manualAssignContainer()">Assign Container →</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="panel" style="margin-top:14px">
+                                <div class="panel-head"><span class="panel-title">Manual Status Override <span style="font-size:10px;color:var(--text-3);font-weight:400;margin-left:8px">Admin only — use with caution</span></span></div>
+                                <div id="adminStatusPanel"></div>
+                            </div>
+                        </div>
+                        <!-- Requisition Approvals (Admin) -->
+                        <div id="allocTabRequisitions" style="display:none">
+                            <div id="adminReqList"></div>
+                        </div>
+                        <!-- Workshop Approvals (Admin) -->
+                        <div id="allocTabWorkshop" style="display:none">
+                            <div id="adminWorkshopList"></div>
+                        </div>
+                    </section>
+
+                    <!-- WORK ANALYSIS -->
+                    <section class="section" id="sec-workanalysis">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">Work Type Analysis</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="renderWorkAnalysis('all',this)">All Time</button>
+                                <button class="filter-btn" onclick="renderWorkAnalysis('today',this)">Today</button>
+                                <button class="filter-btn" onclick="renderWorkAnalysis('week',this)">This Week</button>
+                                <button class="filter-btn" onclick="renderWorkAnalysis('month',this)">This Month</button>
+                            </div>
+                        </div>
+                        <div class="kpi-row" id="waKpis"></div>
+                        <div class="two-col-grid">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Trip Volume by Work Type</span></div>
+                                <div id="waVolumeChart" class="wt-bars-grid"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Performance Matrix</span></div>
+                                <div class="table-wrap">
+                                    <table class="data-table">
+                                        <thead><tr><th>Work Type</th><th>Trips</th><th>Avg Duration</th><th>On-Time %</th><th>Top Truck</th></tr></thead>
+                                        <tbody id="waMatrix"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- REPORTS -->
+                    <section class="section" id="sec-reports">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">Reports &amp; Analytics</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="renderReport('overview',this)">Overview</button>
+                                <button class="filter-btn" onclick="renderReport('fleet',this)">Fleet</button>
+                                <button class="filter-btn" onclick="renderReport('drivers',this)">Drivers</button>
+                                <button class="filter-btn" onclick="renderReport('maintenance',this)">Maintenance</button>
+                                <button class="filter-btn" onclick="renderReport('fuel',this)">Fuel</button>
+                                <button class="filter-btn" onclick="requireFinanceReport('revenue',this)">Revenue 🔒</button>
+                            </div>
+                        </div>
+                        <div id="reportContent"></div>
+                    </section>
+
+                    <!-- LIVE TRACKING -->
+                    <section class="section" id="sec-livetracking">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">Live Tracking</div>
+                            <div class="filter-row">
+                                <button class="action-btn ghost" onclick="refreshTracking()">↻ Refresh</button>
+                            </div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-head">
+                                <span class="panel-title">Fleet Map</span>
+                                <span class="panel-meta" id="trackingMeta">0 vehicles tracked</span>
+                            </div>
+                            <div class="tracking-map">
+                                <div class="tracking-map-placeholder">
+                                    <div style="font-family:var(--font-brand);font-size:22px;color:var(--gold);margin-bottom:8px">GARGO</div>
+                                    <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);letter-spacing:2px;margin-bottom:20px">LIVE GPS · SIMULATED</div>
+                                    <div style="font-size:12px;color:var(--text-2);max-width:400px;line-height:1.6">GPS positions are simulated. Plug in your Google Maps API key to render the interactive map with real-time vehicle markers, route polylines, and geofence alerts.</div>
+                                </div>
+                                <div class="tracking-vehicles" id="trackingVehicles"></div>
+                            </div>
+                        </div>
+                        <div class="two-col-grid" style="margin-top:14px">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Active Movements</span></div>
+                                <div id="trackingMovements"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Geofence Events</span></div>
+                                <div id="trackingGeofence"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- USER MANAGEMENT -->
+                    <section class="section" id="sec-usermgmt">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                User Management
+                            </div>
+                            <div class="filter-row">
+                                <button class="action-btn" onclick="showCreateUserModal()">+ Create User</button>
+                            </div>
+                        </div>
+                        <div class="kpi-row" id="userKpis"></div>
+                        <div class="two-col-grid">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">System Users</span></div>
+                                <div id="userList"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Access Roles</span></div>
+                                <div id="roleList"></div>
+                            </div>
+                        </div>
+                        <div class="panel" style="margin-top:14px">
+                            <div class="panel-head"><span class="panel-title">Audit Log</span></div>
+                            <div id="auditLog"></div>
+                        </div>
+                    </section>
+
+                    <!-- SETTINGS -->
+                    <section class="section" id="sec-settings">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                System Settings
+                            </div>
+                        </div>
+                        <div class="settings-grid">
+                            <div class="report-block">
+                                <h3>System Information</h3>
+                                <div class="detail-row"><span>System</span><b>Gargo Fleet Operations</b></div>
+                                <div class="detail-row"><span>Version</span><b>4.0.0 · Production</b></div>
+                                <div class="detail-row"><span>Domain</span><b>gargo.co.ke</b></div>
+                                <div class="detail-row"><span>Storage</span><b>Supabase (Cloud)</b></div>
+                                <div class="detail-row"><span>Last Backup</span><b id="lastBackup">Never</b></div>
+                                <div class="detail-row"><span>Records</span><b id="totalRecords">0</b></div>
+                            </div>
+                            <div class="report-block">
+                                <h3>Data Management</h3>
+                                <div style="display:flex;flex-direction:column;gap:8px">
+                                    <button class="action-btn ghost" onclick="exportAllData()">⬇ Export All Data (JSON)</button>
+                                    <button class="action-btn ghost" onclick="document.getElementById('importFile').click()">⬆ Import Data</button>
+                                    <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)" />
+                                    <button class="action-btn" onclick="createBackup()">Create Backup</button>
+                                </div>
+                                <div style="margin-top:20px">
+                                    <button class="danger-zone-toggle" onclick="toggleDangerZone()" id="dangerZoneToggle">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                        Show Danger Zone
+                                    </button>
+                                    <div id="dangerZone" style="display:none;margin-top:12px">
+                                        <div class="danger-zone-banner">⚠ These actions are irreversible. Admin PIN required.</div>
+                                        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+                                            <button class="action-btn danger" onclick="clearAllData()">🗑 Clear All System Data</button>
+                                            <button class="action-btn danger" onclick="resetToSeed()">Reset to Seed Data</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-block">
+                                <h3>Integration Status</h3>
+                                <div class="detail-row"><span>Supabase DB</span><b style="color:var(--green)">Connected</b></div>
+                                <div class="detail-row"><span>Google Maps API</span><b style="color:var(--amber)">Pending</b></div>
+                                <div class="detail-row"><span>GPS Telemetry</span><b style="color:var(--green)">Simulated</b></div>
+                                <div class="detail-row"><span>Client Portal</span><b style="color:var(--green)">Active</b></div>
+                                <div class="detail-row"><span>WhatsApp Alerts</span><b style="color:var(--green)">Active</b></div>
+                                <div class="detail-row"><span>MPesa Payments</span><b style="color:var(--text-3)">Not configured</b></div>
+                            </div>
+                            <div class="report-block">
+                                <h3>Company Details</h3>
+                                <div class="detail-row"><span>Company</span><b>Gargo Logistics Ltd</b></div>
+                                <div class="detail-row"><span>Location</span><b>Mombasa, Kenya</b></div>
+                                <div class="detail-row"><span>Tel</span><b>+254 116 307 751</b></div>
+                                <div class="detail-row"><span>Bank</span><b>Equity Bank · 1234567890</b></div>
+                                <div class="detail-row"><span>Swift</span><b>EQBLKENX</b></div>
+                                <div class="detail-row"><span>KRA PIN</span><b>P051234567X</b></div>
+                            </div>
+                        </div>
+                    </section>
+
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- ══ GENERAL MODAL ══ -->
+    <div class="modal-backdrop" id="modalOverlay" onclick="closeModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-hdr">
+                <div class="modal-title" id="modalTitle">Modal</div>
+                <button class="modal-close" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- ══ FINANCE VAULT MODAL ══ -->
+    <div class="modal-backdrop" id="financeLockOverlay">
+        <div class="modal-box vault-modal" onclick="event.stopPropagation()">
+            <div class="modal-hdr">
+                <div class="modal-title" style="display:flex;align-items:center;gap:9px">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                    Finance Vault
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="vault-banner">
+                    <div class="vault-banner-label">RESTRICTED · FINANCIAL DATA</div>
+                    <div class="vault-banner-desc">This area contains sensitive financial data — invoicing, billing rates, revenue reports, and cost analytics. Finance PIN required.</div>
+                </div>
+                <div class="fg">
+                    <label>Finance PIN</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="financePin" placeholder="••••" maxlength="8" autocomplete="off" onkeydown="if(event.key==='Enter')submitFinancePin()" />
+                        <button class="pw-eye" type="button" onclick="togglePwVis('financePin',this)" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="login-error" id="financePinError" style="min-height:1.2em"></div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button class="modal-btn primary" style="flex:1" onclick="submitFinancePin()">Unlock Vault</button>
+                    <button class="modal-btn ghost" onclick="closeFinanceLock()">Cancel</button>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:12px;text-align:center;letter-spacing:0.5px">Session-locked · Resets on logout</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ SETTINGS VAULT MODAL ══ -->
+    <div class="modal-backdrop" id="settingsVaultOverlay">
+        <div class="modal-box vault-modal" onclick="event.stopPropagation()">
+            <div class="modal-hdr">
+                <div class="modal-title" style="display:flex;align-items:center;gap:9px">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83"/></svg>
+                    Settings Vault
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="vault-banner">
+                    <div class="vault-banner-label">RESTRICTED · SYSTEM SETTINGS</div>
+                    <div class="vault-banner-desc">System settings contain sensitive configuration. Admin vault password required to proceed.</div>
+                </div>
+                <div class="fg">
+                    <label>Vault Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="settingsVaultPin" placeholder="Enter vault password" autocomplete="off" onkeydown="if(event.key==='Enter')submitSettingsVault()" />
+                        <button class="pw-eye" type="button" onclick="togglePwVis('settingsVaultPin',this)" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="login-error" id="settingsVaultError" style="min-height:1.2em"></div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button class="modal-btn primary" style="flex:1" onclick="submitSettingsVault()">Unlock Settings</button>
+                    <button class="modal-btn ghost" onclick="closeSettingsVault()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ ADMIN PIN MODAL ══ -->
+    <div class="modal-backdrop" id="adminPinOverlay">
+        <div class="modal-box vault-modal" onclick="event.stopPropagation()">
+            <div class="modal-hdr">
+                <div class="modal-title" style="display:flex;align-items:center;gap:9px">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    Admin Required
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="vault-banner">
+                    <div class="vault-banner-label">ADMIN ONLY ACTION</div>
+                    <div class="vault-banner-desc" id="adminPinDesc">This action requires admin credentials.</div>
+                </div>
+                <div class="fg">
+                    <label>Admin Password</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="adminPinInput" placeholder="Enter admin password" autocomplete="off" onkeydown="if(event.key==='Enter')submitAdminPin()" />
+                        <button class="pw-eye" type="button" onclick="togglePwVis('adminPinInput',this)" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="login-error" id="adminPinError" style="min-height:1.2em"></div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button class="modal-btn primary" style="flex:1" onclick="submitAdminPin()">Authenticate</button>
+                    <button class="modal-btn ghost" onclick="closeAdminPin()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ══ TOAST STACK ══ -->
+    <div id="toastStack"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
