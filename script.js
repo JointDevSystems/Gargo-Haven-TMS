@@ -952,7 +952,7 @@ const sectionRenderers = {
   allocation:()=>renderAllocation('auto'), workanalysis:()=>renderWorkAnalysis('all'),
   reports:()=>renderReport('overview'), livetracking:renderTracking,
   usermgmt:renderUserMgmt, settings:renderSettings,
-  publicbookings:()=>renderPublicBookings('all')
+  publicbookings: renderPublicBookings,
 };
 
 function toggleSidebar() { document.body.classList.toggle('sidebar-open'); }
@@ -2536,14 +2536,13 @@ window.showAdminSection = function(sec, btn) {
     toast('System initialization error. Please refresh.', 'error');
   }
 
-  // ─── PUBLIC BOOKINGS ──────────────────────────────────────────────
+  // ================== PUBLIC BOOKINGS ==================
 
 let _publicBookingFilter = 'pending';
 
-function filterPublicBookings(f, btn) {
-  _publicBookingFilter = f;
-  document.querySelectorAll('#sec-publicbookings .filter-btn')
-    .forEach(b => b.classList.remove('active'));
+function filterPublicBookings(filter, btn) {
+  _publicBookingFilter = filter;
+  document.querySelectorAll('#sec-publicbookings .filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderPublicBookings();
 }
@@ -2552,149 +2551,85 @@ async function renderPublicBookings() {
   const container = document.getElementById('publicBookingsList');
   if (!container) return;
 
-  console.log('🔄 Fetching public bookings...');
   let query = supabase.from('public_bookings').select('*');
   if (_publicBookingFilter !== 'all') {
     query = query.eq('status', _publicBookingFilter);
   }
-  const { data: bookings, error } = await query.order('created_at', { ascending: false });
-
-  console.log('📦 Bookings data:', bookings);
-  console.log('❌ Error:', error);
-
-  const badge = document.getElementById('badge-publicbookings');
-  if (badge) {
-    const pendingCount = bookings?.filter(b => b.status === 'pending').length || 0;
-    badge.textContent = pendingCount || '';
-    badge.style.display = pendingCount ? 'inline' : 'none';
-  }
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><div>Error loading bookings: ${error.message}</div></div>`;
+    container.innerHTML = `<div class="empty-state">Error: ${error.message}</div>`;
     return;
   }
 
-  if (!bookings || bookings.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-label">No ${_publicBookingFilter} bookings</div></div>`;
+  if (!data || data.length === 0) {
+    container.innerHTML = `<div class="empty-state">No ${_publicBookingFilter} bookings</div>`;
     return;
   }
 
-  container.innerHTML = bookings.map(b => `
-    <div class="public-booking-card" style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:12px;">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
-        <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text)">${sanitize(b.full_name)}</div>
-          <div style="font-size:11px;color:var(--text-2);margin-top:4px;">
-            ${sanitize(b.email)} · ${sanitize(b.phone)} · ${sanitize(b.company) || '—'}
-          </div>
-        </div>
-        <span class="sbadge s-${b.status === 'pending' ? 'pending' : 'completed'}">${b.status}</span>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin:10px 0;font-size:12px;color:var(--text-2);">
-        <div><span style="color:var(--text-3)">Service:</span> ${sanitize(b.service_type)}</div>
-        <div><span style="color:var(--text-3)">Container:</span> ${sanitize(b.container) || '—'}</div>
-        <div><span style="color:var(--text-3)">Size:</span> ${sanitize(b.cargo_type) || '—'}</div>
-        <div><span style="color:var(--text-3)">Pickup:</span> ${sanitize(b.pickup_location) || '—'}</div>
-        <div><span style="color:var(--text-3)">Drop:</span> ${sanitize(b.dropoff_location) || '—'}</div>
-        <div><span style="color:var(--text-3)">Date:</span> ${b.pickup_date ? fmtDate(b.pickup_date) : '—'}</div>
-        <div><span style="color:var(--text-3)">Quote:</span> ${b.quote_amount ? fmtKsh(b.quote_amount) : '—'}</div>
-      </div>
-      ${b.notes ? `<div style="font-size:11px;color:var(--text-3);background:var(--surface);border-radius:4px;padding:8px;margin-top:6px;">${sanitize(b.notes)}</div>` : ''}
-      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
-        ${b.status === 'pending' ? `
-          <button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">Import to Fleet →</button>
-        ` : ''}
+  container.innerHTML = data.map(b => `
+    <div style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
+      <div><strong>${sanitize(b.full_name)}</strong> (${sanitize(b.email)})</div>
+      <div>Service: ${sanitize(b.service_type)} · Container: ${sanitize(b.container) || '—'}</div>
+      <div>Pickup: ${sanitize(b.pickup_location)} → Drop: ${sanitize(b.dropoff_location)}</div>
+      <div style="margin-top:8px;">
+        <span class="sbadge s-${b.status}">${b.status}</span>
+        ${b.status === 'pending' ? `<button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">Import to Fleet</button>` : ''}
         <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
       </div>
     </div>
   `).join('');
+
+  // Update badge
+  const badge = document.getElementById('badge-publicbookings');
+  if (badge) {
+    const pending = data.filter(b => b.status === 'pending').length;
+    badge.textContent = pending || '';
+    badge.style.display = pending ? 'inline' : 'none';
+  }
 }
 
 async function importPublicBooking(bookingId) {
-  if (!confirm('Import this public booking as a new trip?')) return;
+  if (!confirm('Import this booking?')) return;
+  const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
+  if (error || !booking) { toast('Booking not found', 'error'); return; }
+  if (booking.status !== 'pending') { toast('Already processed', 'warning'); return; }
 
-  const { data: booking, error } = await supabase
-    .from('public_bookings')
-    .select('*')
-    .eq('id', bookingId)
-    .single();
-
-  if (error || !booking || booking.status !== 'pending') {
-    toast('Booking not found or already processed', 'error');
-    return;
-  }
-
-  const workTypeMap = {
-    'Depot Storage': 'Storage', 'Port Haulage': 'Haulage',
-    'Container Repair': 'Repair', 'Container Washing': 'Washing',
-    'Reefer Management': 'Reefer', 'Full Transport Package': 'Transport Package'
-  };
-
+  // Create trip
   const trip = {
     id: uid('TRIP'),
     container: booking.container || `PUB-${booking.id.slice(0,8)}`,
     ctype: booking.cargo_type || '20ft Dry',
-    workType: workTypeMap[booking.service_type] || 'Other',
+    workType: booking.service_type || 'Other',
     origin: booking.pickup_location || '—',
     dest: booking.dropoff_location || '—',
     shippingLine: null,
     status: 'active',
     startTime: new Date().toISOString(),
-    eta: new Date(Date.now() + 4 * 3600000).toISOString(),
+    eta: new Date(Date.now() + 4*3600000).toISOString(),
     distance: 0,
     priority: 'Normal',
-    notes: `Imported from public booking #${booking.id}\n${booking.notes || ''}`,
+    notes: `Imported from public booking #${booking.id}`,
     ref: `PUB-${booking.id.slice(0,8)}`,
     truckId: null,
     driverId: null,
   };
-
   state.db.trips.push(trip);
   scheduleSave();
 
   await supabase.from('public_bookings').update({ status: 'imported' }).eq('id', bookingId);
-
-  addAudit(state.profile.username, 'Public Booking Imported', `${booking.full_name} — ${booking.service_type}`);
-  buildBadges();
+  toast('Imported as trip ' + trip.id.slice(-6), 'success');
   renderPublicBookings();
-  toast('Booking imported as trip #' + trip.id.slice(-6), 'success');
 }
 
 async function showPublicBookingDetail(id) {
-  const { data: booking, error } = await supabase
-    .from('public_bookings')
-    .select('*')
-    .eq('id', id)
-    .single();
-
-  if (error || !booking) {
-    toast('Could not load booking', 'error');
-    return;
-  }
-
-  openModal('Public Booking Detail', `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-      <div class="fg" style="margin:0;"><label>Name</label><div style="font-weight:600;">${sanitize(booking.full_name)}</div></div>
-      <div class="fg" style="margin:0;"><label>Email</label><div>${sanitize(booking.email)}</div></div>
-      <div class="fg" style="margin:0;"><label>Phone</label><div>${sanitize(booking.phone)}</div></div>
-      <div class="fg" style="margin:0;"><label>Company</label><div>${sanitize(booking.company) || '—'}</div></div>
-      <div class="fg" style="margin:0;"><label>Service Type</label><div>${sanitize(booking.service_type)}</div></div>
-      <div class="fg" style="margin:0;"><label>Container</label><div>${sanitize(booking.container) || '—'}</div></div>
-      <div class="fg" style="margin:0;"><label>Cargo Type</label><div>${sanitize(booking.cargo_type) || '—'}</div></div>
-      <div class="fg" style="margin:0;"><label>Pickup Location</label><div>${sanitize(booking.pickup_location) || '—'}</div></div>
-      <div class="fg" style="margin:0;"><label>Dropoff Location</label><div>${sanitize(booking.dropoff_location) || '—'}</div></div>
-      <div class="fg" style="margin:0;"><label>Pickup Date</label><div>${booking.pickup_date ? fmtDate(booking.pickup_date) : '—'}</div></div>
-      <div class="fg" style="margin:0;"><label>Quote Amount</label><div>${booking.quote_amount ? fmtKsh(booking.quote_amount) : '—'}</div></div>
-      <div class="fg" style="margin:0;"><label>Status</label><div>${sbadge(booking.status)}</div></div>
-    </div>
-    ${booking.notes ? `<div class="fg"><label>Notes</label><div style="background:var(--surface);border-radius:4px;padding:10px;">${sanitize(booking.notes)}</div></div>` : ''}
-    ${booking.status === 'pending' ? `<button class="modal-btn primary" onclick="closeModal();importPublicBooking('${booking.id}')" style="margin-top:10px;">Import to Fleet</button>` : ''}
-  `);
+  const { data: b, error } = await supabase.from('public_bookings').select('*').eq('id', id).single();
+  if (error || !b) { toast('Not found', 'error'); return; }
+  openModal('Booking Detail', `<pre>${JSON.stringify(b, null, 2)}</pre>`);
 }
 
 async function refreshPublicBookings() {
-  toast('Refreshing bookings…', 'info', 1500);
+  toast('Refreshing...', 'info');
   await renderPublicBookings();
 }
-
 })();
