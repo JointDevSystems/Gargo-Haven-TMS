@@ -2559,7 +2559,9 @@ async function renderPublicBookings() {
   container.innerHTML = data.map(b => `
     <div style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
       <div><strong>${sanitize(b.full_name)}</strong> (${sanitize(b.email)})</div>
-      <div>Service: ${sanitize(b.service_type)} · Container: ${sanitize(b.container) || '—'}</div>
+      <div>Service: ${sanitize(b.service_type)}</div>
+<div>Container: ${sanitize(b.container) || 'Not provided'}</div>
+<div style="font-size:10px;color:var(--text-3);">Booking ID: ${b.id.slice(0,8)}</div>
       <div>Pickup: ${sanitize(b.pickup_location)} → Drop: ${sanitize(b.dropoff_location)}</div>
       <div style="margin-top:8px;">
         <span class="sbadge s-${b.status}">${b.status}</span>
