@@ -459,7 +459,7 @@ async function initDB() {
   if (loaded) {
     state.db = loaded;
   } else {
-    // Provide empty structure (no seed data)
+    // Provide empty structure – no seed data
     state.db = {
       trucks: [],
       drivers: [],
@@ -490,7 +490,6 @@ async function initDB() {
     };
   }
 }
-
 
 function uid(pfx='ID') {
   if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
