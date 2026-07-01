@@ -461,14 +461,33 @@ async function initDB() {
   } else {
     // Provide empty structure (no seed data)
     state.db = {
-      trucks: [], drivers: [], trips: [], maintenance: [], fuel: [],
-      shippingLines: [], shutouts: [], interchange: [], requisitions: [],
-      workshop: [], invoices: [], billingRates: {}, allocationRules: [],
-      trackingPositions: {}, auditLog: [], settings: {}, profiles: []
+      trucks: [],
+      drivers: [],
+      trips: [],
+      maintenance: [],
+      fuel: [],
+      shippingLines: [],
+      shutouts: [],
+      interchange: [],
+      requisitions: [],
+      workshop: [],
+      invoices: [],
+      billingRates: {},
+      allocationRules: [],
+      trackingPositions: {},
+      auditLog: [],
+      settings: {},
+      profiles: []
     };
   }
   if (!state.db.settings) {
-    state.db.settings = { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd' };
+    state.db.settings = {
+      backupDate: null,
+      mapApiKey: '',
+      whatsapp: true,
+      mpesa: false,
+      companyName: 'Gargo Logistics Ltd'
+    };
   }
 }
 
