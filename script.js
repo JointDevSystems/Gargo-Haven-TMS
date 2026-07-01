@@ -2562,7 +2562,6 @@ async function renderPublicBookings() {
   console.log('📦 Bookings data:', bookings);
   console.log('❌ Error:', error);
 
-  // Update badge
   const badge = document.getElementById('badge-publicbookings');
   if (badge) {
     const pendingCount = bookings?.filter(b => b.status === 'pending').length || 0;
@@ -2612,7 +2611,7 @@ async function renderPublicBookings() {
 }
 
 async function importPublicBooking(bookingId) {
-  if (!confirm('Import this public booking as a new trip? The booking will be marked as imported.')) return;
+  if (!confirm('Import this public booking as a new trip?')) return;
 
   const { data: booking, error } = await supabase
     .from('public_bookings')
@@ -2620,32 +2619,22 @@ async function importPublicBooking(bookingId) {
     .eq('id', bookingId)
     .single();
 
-  if (error || !booking) {
-    toast('Failed to fetch booking details', 'error');
-    return;
-  }
-  if (booking.status !== 'pending') {
-    toast('Booking already processed', 'warning');
+  if (error || !booking || booking.status !== 'pending') {
+    toast('Booking not found or already processed', 'error');
     return;
   }
 
-  // Map service_type to work_type
   const workTypeMap = {
-    'Depot Storage': 'Storage',
-    'Port Haulage': 'Haulage',
-    'Container Repair': 'Repair',
-    'Container Washing': 'Washing',
-    'Reefer Management': 'Reefer',
-    'Full Transport Package': 'Transport Package'
+    'Depot Storage': 'Storage', 'Port Haulage': 'Haulage',
+    'Container Repair': 'Repair', 'Container Washing': 'Washing',
+    'Reefer Management': 'Reefer', 'Full Transport Package': 'Transport Package'
   };
-  const workType = workTypeMap[booking.service_type] || 'Other';
 
-  // Create a new trip
   const trip = {
     id: uid('TRIP'),
     container: booking.container || `PUB-${booking.id.slice(0,8)}`,
     ctype: booking.cargo_type || '20ft Dry',
-    workType: workType,
+    workType: workTypeMap[booking.service_type] || 'Other',
     origin: booking.pickup_location || '—',
     dest: booking.dropoff_location || '—',
     shippingLine: null,
@@ -2663,14 +2652,7 @@ async function importPublicBooking(bookingId) {
   state.db.trips.push(trip);
   scheduleSave();
 
-  const { error: updateError } = await supabase
-    .from('public_bookings')
-    .update({ status: 'imported' })
-    .eq('id', bookingId);
-
-  if (updateError) {
-    toast('Booking updated but trip was created. Manual sync may be needed.', 'warning');
-  }
+  await supabase.from('public_bookings').update({ status: 'imported' }).eq('id', bookingId);
 
   addAudit(state.profile.username, 'Public Booking Imported', `${booking.full_name} — ${booking.service_type}`);
   buildBadges();
@@ -2714,6 +2696,5 @@ async function refreshPublicBookings() {
   toast('Refreshing bookings…', 'info', 1500);
   await renderPublicBookings();
 }
-
 
 })();
