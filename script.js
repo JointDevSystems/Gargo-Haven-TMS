@@ -17,8 +17,6 @@ let state = {
   currentAdminSection: null,
   alertsOpen        : false,
   db                : null,
-  adminPinCallback  : null,
-  adminPinAction    : null,
   pendingFinanceAction: null,
   idleTimer         : null,
   lastActivity      : Date.now(),
@@ -26,9 +24,7 @@ let state = {
   _saveDebounce     : null,
 };
 
-/* ──────────────────────────────────────────────────────────────────
-   § 1  SEED DATA (for initial database setup)
-────────────────────────────────────────────────────────────────── */
+
 function seedData() {
   const now = Date.now();
   const d = (h, m=0) => new Date(now - h*3600000 - m*60000).toISOString();
@@ -161,28 +157,210 @@ function seedData() {
 }
 
 /* ──────────────────────────────────────────────────────────────────
-   § 2  SUPABASE PERSISTENCE
+   § 2  SUPABASE PERSISTENCE — normalized tables
+   (replaces the old single `app_state` JSON blob; mirrors the
+   column-name mapping in migrate_blob_to_tables.js)
 ────────────────────────────────────────────────────────────────── */
+
+/* ---- row <-> app-object mappers -------------------------------- */
+function truckToRow(t)  { return { id:t.id, reg:t.reg, make:t.make, type:t.type, year:t.year, colour:t.colour, status:t.status, fuel_pct:Math.round(t.fuelPct), mileage:t.mileage, last_service:t.lastService, next_service:t.nextService, notes:t.notes, licence_plate:t.licencePlate, vin:t.vin }; }
+function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type, year:r.year, colour:r.colour, status:r.status, fuelPct:r.fuel_pct, mileage:r.mileage, driver:null, lastService:r.last_service, nextService:r.next_service, notes:r.notes||'', img:'', licencePlate:r.licence_plate, vin:r.vin||'' }; }
+
+function driverToRow(d)  { return { id:d.id, name:d.name, phone:d.phone, licence:d.licence, licence_exp:d.licenceExp, status:d.status, truck_id:d.truckId||null, trips_today:d.tripsToday, current_load:d.load, location:d.location, id_no:d.idNo, rating:d.rating }; }
+function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence:r.licence, licenceExp:r.licence_exp, status:r.status, truckId:r.truck_id, tripsToday:r.trips_today, load:r.current_load, location:r.location, idNo:r.id_no, rating:r.rating }; }
+
+function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref }; }
+function tripFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference }; }
+
+function maintToRow(m)  { return { id:m.id, truck_id:m.truckId||null, type:m.type, description:m.desc, priority:m.priority, status:m.status, date:m.date, cost:m.cost, technician:m.tech, resolved_date:m.resolvedDate }; }
+function maintFromRow(r){ return { id:r.id, truckId:r.truck_id, type:r.type, desc:r.description, priority:r.priority, status:r.status, date:r.date, cost:r.cost, tech:r.technician, resolvedDate:r.resolved_date }; }
+
+function fuelToRow(f)  { return { id:f.id, truck_id:f.truckId||null, driver_id:f.driverId||null, date:f.date, litres:f.litres, price_per_litre:f.pricePerLitre, station:f.station, odometer:f.odometer, receipt:f.receipt }; }
+function fuelFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, date:r.date, litres:r.litres, pricePerLitre:r.price_per_litre, station:r.station, odometer:r.odometer, receipt:r.receipt }; }
+
+function lineToRow(l)  { return { id:l.id, code:l.code, name:l.name, contact:l.contact, rate_20ft:l.rate20, rate_40ft:l.rate40, rate_hc:l.rateHC, active:l.active }; }
+function lineFromRow(r){ return { id:r.id, code:r.code, name:r.name, contact:r.contact, rate20:r.rate_20ft, rate40:r.rate_40ft, rateHC:r.rate_hc, active:r.active }; }
+
+function shutoutToRow(s)  { return { id:s.id, container:s.container, vessel:s.vessel, voyage:s.voyage, line_id:s.line||null, date:s.date, status:s.status, reason:s.reason, truck_id:s.truckId||null, driver_id:s.driverId||null, notes:s.notes }; }
+function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.vessel, voyage:r.voyage, line:r.line_id, date:r.date, status:r.status, reason:r.reason, truckId:r.truck_id, driverId:r.driver_id, notes:r.notes }; }
+
+// interchange's truck/driver fields are named `truck`/`driver` (not
+// `truckId`/`driverId`) in the app-object shape — carried over from
+// the original blob; see migration notes in migrate_blob_to_tables.js.
+function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'' }; }
+function icFromRow(r){ return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'' }; }
+
+function reqToRow(r)   { return { id:r.id, requester:r.requester, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approved_date:r.approvedDate, notes:r.notes }; }
+function reqFromRow(r) { return { id:r.id, requester:r.requester, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approvedDate:r.approved_date, notes:r.notes }; }
+
+function wsToRow(w)  { return { id:w.id, truck_id:w.truckId||null, title:w.title, description:w.desc, tech:w.tech, status:w.status, reported:w.reported, diagnosed:w.diagnosed, parts:w.parts, labour:w.labour, total:w.total }; }
+function wsFromRow(r){ return { id:r.id, truckId:r.truck_id, title:r.title, desc:r.description, tech:r.tech, status:r.status, reported:r.reported, diagnosed:r.diagnosed, parts:r.parts, labour:r.labour, total:r.total }; }
+
+function invToRow(i)  { return { id:i.id, client:i.client, date:i.date, due:i.due, status:i.status, subtotal:i.subtotal, vat:i.vat, total:i.total, paid:i.paid, ref:i.ref, notes:i.notes }; }
+function invFromRow(r){ return { id:r.id, client:r.client, date:r.date, due:r.due, status:r.status, subtotal:r.subtotal, vat:r.vat, total:r.total, paid:r.paid, ref:r.ref, notes:r.notes, trips:[] }; }
+
+function allocToRow(a)  { return { id:a.id, name:a.name, description:a.desc, weight:a.weight, active:a.active }; }
+function allocFromRow(r){ return { id:r.id, name:r.name, desc:r.description, weight:r.weight, active:r.active }; }
+
+function auditToRow(a) { return { id:a.id, username:a.user, action:a.action, detail:a.detail, time:a.time }; }
+
+/* ---- generic upsert helper -------------------------------------- */
+async function upsertRows(table, rows, opts) {
+  if (!rows || !rows.length) return;
+  const { error } = await supabase.from(table).upsert(rows, opts || {});
+  if (error) console.error(`${table} save failed:`, error.message);
+}
+
+/* invoice_trips is a pure join table — easiest to keep correct by
+   clearing and re-inserting from the in-memory invoice.trips[] arrays
+   on every save, rather than diffing. */
+async function syncInvoiceTrips(invoices) {
+  const invoiceIds = invoices.map(i => i.id);
+  if (invoiceIds.length) {
+    const { error: delErr } = await supabase.from('invoice_trips').delete().in('invoice_id', invoiceIds);
+    if (delErr) console.error('invoice_trips clear failed:', delErr.message);
+  }
+  const rows = [];
+  invoices.forEach(inv => (inv.trips || []).forEach(tripId => rows.push({ invoice_id: inv.id, trip_id: tripId })));
+  if (rows.length) {
+    const { error } = await supabase.from('invoice_trips').insert(rows);
+    if (error) console.error('invoice_trips save failed:', error.message);
+  }
+}
+
+/* ---- load: normalized tables -> in-memory app shape ------------- */
 async function loadDB() {
   try {
-    const { data, error } = await supabase.from('app_state').select('data').eq('id', 'main').single();
-    if (error) throw error;
-    return data.data;
+    const [
+      trucksRes, driversRes, tripsRes, maintRes, fuelRes, linesRes,
+      shutoutsRes, icRes, reqRes, wsRes, invRes, invTripsRes,
+      billingRes, allocRes, trackRes, auditRes, settingsRes, profilesRes,
+    ] = await Promise.all([
+      supabase.from('trucks').select('*'),
+      supabase.from('drivers').select('*'),
+      supabase.from('trips').select('*'),
+      supabase.from('maintenance').select('*'),
+      supabase.from('fuel_logs').select('*'),
+      supabase.from('shipping_lines').select('*'),
+      supabase.from('shutouts').select('*'),
+      supabase.from('interchange').select('*'),
+      supabase.from('requisitions').select('*'),
+      supabase.from('workshop_jobs').select('*'),
+      supabase.from('invoices').select('*'),
+      supabase.from('invoice_trips').select('*'),
+      supabase.from('billing_rates').select('*'),
+      supabase.from('allocation_rules').select('*'),
+      supabase.from('tracking_positions').select('*'),
+      supabase.from('audit_log').select('*'),
+      supabase.from('app_settings').select('*').eq('id', 1).maybeSingle(),
+      supabase.from('profiles').select('*'),
+    ]);
+
+    if (trucksRes.error) throw trucksRes.error;
+
+    const trucks  = (trucksRes.data || []).map(truckFromRow);
+    const drivers = (driversRes.data || []).map(driverFromRow);
+    // trucks has no driver_id column — the link is one-directional via
+    // drivers.truck_id, so backfill the computed `driver` field here.
+    drivers.forEach(d => { if (d.truckId) { const t = trucks.find(x => x.id === d.truckId); if (t) t.driver = d.id; } });
+
+    const trips         = (tripsRes.data || []).map(tripFromRow);
+    const maintenance    = (maintRes.data || []).map(maintFromRow);
+    const fuel           = (fuelRes.data || []).map(fuelFromRow);
+    const shippingLines  = (linesRes.data || []).map(lineFromRow);
+    const shutouts       = (shutoutsRes.data || []).map(shutoutFromRow);
+    const interchange    = (icRes.data || []).map(icFromRow);
+    const requisitions   = (reqRes.data || []).map(reqFromRow);
+    const workshop        = (wsRes.data || []).map(wsFromRow);
+    const invoices        = (invRes.data || []).map(invFromRow);
+
+    const tripsByInvoice = {};
+    (invTripsRes.data || []).forEach(row => {
+      (tripsByInvoice[row.invoice_id] = tripsByInvoice[row.invoice_id] || []).push(row.trip_id);
+    });
+    invoices.forEach(inv => { inv.trips = tripsByInvoice[inv.id] || []; });
+
+    const billingRates = {};
+    (billingRes.data || []).forEach(r => { billingRates[r.ctype] = { base: r.base, perKm: r.per_km }; });
+
+    const allocationRules = (allocRes.data || []).map(allocFromRow);
+
+    const trackingPositions = {};
+    (trackRes.data || []).forEach(r => {
+      trackingPositions[r.truck_id] = { lat: r.lat, lng: r.lng, speed: r.speed, heading: r.heading, zone: r.zone, lastUpdate: r.last_update };
+    });
+
+    const auditLog = (auditRes.data || [])
+      .map(a => ({ id: a.id, user: a.username, action: a.action, detail: a.detail, time: a.time }))
+      .sort((a, b) => new Date(b.time) - new Date(a.time));
+
+    const s = settingsRes.data;
+    const settings = s
+      ? { backupDate: s.backup_date, mapApiKey: s.map_api_key || '', whatsapp: !!s.whatsapp, mpesa: !!s.mpesa, companyName: s.company_name || 'Gargo Logistics Ltd' }
+      : { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd' };
+
+    // `profiles` is a real Supabase Auth-linked table (unrelated to the
+    // legacy blob) — read it live for an accurate user list.
+    const profiles = (profilesRes.data || []).map(p => ({
+      id: p.id, name: p.name, username: p.username, email: p.email,
+      role: p.role, active: p.active,
+      created: p.created_at || p.created || new Date().toISOString(),
+      lastLogin: p.last_login || null,
+    }));
+
+    return {
+      trucks, drivers, trips, maintenance, fuel, shippingLines, shutouts,
+      interchange, requisitions, workshop, invoices, billingRates,
+      allocationRules, trackingPositions, auditLog, settings, profiles,
+    };
   } catch (e) {
     console.warn('Failed to load from Supabase:', e);
     return null;
   }
 }
 
+/* ---- save: in-memory app shape -> normalized tables -------------- */
 async function saveDB() {
   if (!state.db) return;
+  const db = state.db;
   try {
-    const { error } = await supabase.from('app_state').upsert({
-      id: 'main',
-      data: state.db,
-      updated_at: new Date().toISOString(),
-    });
-    if (error) throw error;
+    // Parents before children, to satisfy foreign keys.
+    await upsertRows('shipping_lines', db.shippingLines.map(lineToRow));
+    await upsertRows('trucks',         db.trucks.map(truckToRow));
+    await upsertRows('drivers',        db.drivers.map(driverToRow));
+    await upsertRows('trips',          db.trips.map(tripToRow));
+    await upsertRows('maintenance',    db.maintenance.map(maintToRow));
+    await upsertRows('fuel_logs',      db.fuel.map(fuelToRow));
+    await upsertRows('shutouts',       db.shutouts.map(shutoutToRow));
+    await upsertRows('interchange',    db.interchange.map(icToRow));
+    await upsertRows('requisitions',   db.requisitions.map(reqToRow));
+    await upsertRows('workshop_jobs',  db.workshop.map(wsToRow));
+    await upsertRows('invoices',       db.invoices.map(invToRow));
+    await syncInvoiceTrips(db.invoices);
+
+    const billingRows = Object.entries(db.billingRates || {}).map(([ctype, v]) => ({ ctype, base: v.base, per_km: v.perKm }));
+    await upsertRows('billing_rates', billingRows, { onConflict: 'ctype' });
+
+    await upsertRows('allocation_rules', db.allocationRules.map(allocToRow));
+
+    const trackingRows = Object.entries(db.trackingPositions || {}).map(([truckId, p]) => ({
+      truck_id: truckId, lat: p.lat, lng: p.lng, speed: p.speed, heading: p.heading, zone: p.zone, last_update: p.lastUpdate,
+    }));
+    await upsertRows('tracking_positions', trackingRows, { onConflict: 'truck_id' });
+
+    await upsertRows('audit_log', db.auditLog.map(auditToRow));
+
+    if (db.settings) {
+      const { error } = await supabase.from('app_settings').upsert({
+        id: 1,
+        company_name: db.settings.companyName,
+        backup_date: db.settings.backupDate,
+        map_api_key: db.settings.mapApiKey,
+        whatsapp: db.settings.whatsapp,
+        mpesa: db.settings.mpesa,
+      }, { onConflict: 'id' });
+      if (error) console.error('app_settings save failed:', error.message);
+    }
   } catch (e) {
     console.warn('Unable to save to Supabase:', e);
     toast('Could not save data. Check network.', 'warning', 4000);
@@ -197,24 +375,112 @@ function scheduleSave() {
   }, 300);
 }
 
+/* ---- one-time seed-id remap --------------------------------------
+   seedData() uses short human-readable ids ('TRK001', 'DRV001'…) for
+   readability. Real tables use uuid primary keys, so before a fresh
+   seed is written to Supabase every id (and every field referencing
+   one) is swapped for a real uuid, using the same id-map approach as
+   migrate_blob_to_tables.js. */
+function remapSeedIds(db) {
+  const idMap = { trucks: new Map(), drivers: new Map(), trips: new Map(), shippingLines: new Map(), invoices: new Map() };
+  const remapOwnIds = (arr, map) => (arr || []).forEach(o => { const fresh = uid(); if (map) map.set(o.id, fresh); o.id = fresh; });
+
+  remapOwnIds(db.shippingLines, idMap.shippingLines);
+  remapOwnIds(db.trucks,        idMap.trucks);
+  remapOwnIds(db.drivers,       idMap.drivers);
+  remapOwnIds(db.trips,         idMap.trips);
+  remapOwnIds(db.invoices,      idMap.invoices);
+  [db.maintenance, db.fuel, db.shutouts, db.interchange, db.requisitions, db.workshop, db.profiles, db.auditLog, db.allocationRules]
+    .forEach(arr => remapOwnIds(arr, null));
+
+  db.drivers.forEach(d => { d.truckId = d.truckId ? (idMap.trucks.get(d.truckId) || null) : null; });
+  db.trucks.forEach(t  => { t.driver  = t.driver  ? (idMap.drivers.get(t.driver)  || null) : null; });
+  db.trips.forEach(t => {
+    t.truckId      = t.truckId      ? (idMap.trucks.get(t.truckId)             || null) : null;
+    t.driverId     = t.driverId     ? (idMap.drivers.get(t.driverId)           || null) : null;
+    t.shippingLine = t.shippingLine ? (idMap.shippingLines.get(t.shippingLine) || null) : null;
+  });
+  db.maintenance.forEach(m => { m.truckId = m.truckId ? (idMap.trucks.get(m.truckId) || null) : null; });
+  db.fuel.forEach(f => {
+    f.truckId  = f.truckId  ? (idMap.trucks.get(f.truckId)   || null) : null;
+    f.driverId = f.driverId ? (idMap.drivers.get(f.driverId) || null) : null;
+  });
+  db.shutouts.forEach(s => {
+    s.line     = s.line     ? (idMap.shippingLines.get(s.line) || null) : null;
+    s.truckId  = s.truckId  ? (idMap.trucks.get(s.truckId)      || null) : null;
+    s.driverId = s.driverId ? (idMap.drivers.get(s.driverId)    || null) : null;
+  });
+  db.interchange.forEach(i => {
+    i.line   = i.line   ? (idMap.shippingLines.get(i.line) || null) : null;
+    i.truck  = i.truck  ? (idMap.trucks.get(i.truck)         || null) : null;
+    i.driver = i.driver ? (idMap.drivers.get(i.driver)       || null) : null;
+  });
+  db.workshop.forEach(w => { w.truckId = w.truckId ? (idMap.trucks.get(w.truckId) || null) : null; });
+  db.requisitions.forEach(r => { if (idMap.drivers.has(r.requester)) r.requester = idMap.drivers.get(r.requester); });
+  db.invoices.forEach(inv => { inv.trips = (inv.trips || []).map(tid => idMap.trips.get(tid)).filter(Boolean); });
+
+  const newTracking = {};
+  Object.entries(db.trackingPositions || {}).forEach(([oldTruckId, p]) => {
+    const freshId = idMap.trucks.get(oldTruckId);
+    if (freshId) newTracking[freshId] = p;
+  });
+  db.trackingPositions = newTracking;
+
+  return db;
+}
+
+/* ---- bulk delete, used by "clear all data" / "reset to seed" ----- */
+async function clearAllTables() {
+  const del = async (table, col) => {
+    const { error } = await supabase.from(table).delete().not(col, 'is', null);
+    if (error) console.error(`${table} clear failed:`, error.message);
+  };
+  // Children before parents.
+  await del('invoice_trips', 'invoice_id');
+  await del('invoices', 'id');
+  await del('audit_log', 'id');
+  await del('tracking_positions', 'truck_id');
+  await del('allocation_rules', 'id');
+  await del('billing_rates', 'ctype');
+  await del('workshop_jobs', 'id');
+  await del('requisitions', 'id');
+  await del('interchange', 'id');
+  await del('shutouts', 'id');
+  await del('fuel_logs', 'id');
+  await del('maintenance', 'id');
+  await del('trips', 'id');
+  await del('drivers', 'id');
+  await del('trucks', 'id');
+  await del('shipping_lines', 'id');
+}
+
 async function initDB() {
-  let saved = await loadDB();
-  if (saved) {
-    state.db = saved;
+  const loaded = await loadDB();
+  if (loaded && (loaded.trucks.length || loaded.drivers.length || loaded.shippingLines.length)) {
+    state.db = loaded;
   } else {
-    state.db = seedData();
+    state.db = remapSeedIds(seedData());
     await saveDB();
   }
   if (!state.db.settings) {
     state.db.settings = { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd' };
   }
-  await saveDB();
 }
 
 /* ──────────────────────────────────────────────────────────────────
    § 3  UTILITY HELPERS
 ────────────────────────────────────────────────────────────────── */
-function uid(pfx='ID') { return pfx + Math.random().toString(36).slice(2,8).toUpperCase(); }
+// Real tables use uuid primary keys, so uid() now returns a genuine
+// uuid v4. The `pfx` param is kept (and ignored) so every existing
+// call site — uid('TRK'), uid('DRV'), uid('AUD')… — keeps working
+// unchanged.
+function uid(pfx='ID') {
+  if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 function fmt(n) { return Number(n).toLocaleString('en-KE'); }
 function fmtKsh(n, mask=false) { 
   if (mask) return '<span class="money-mask">KSh ••••••</span>'; 
@@ -1833,11 +2099,12 @@ function showUserDetail(id) {
   openModal(`User — ${u.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div class="user-av-lg" style="width:48px;height:48px;font-size:16px">${initials(u.name)}</div><div><div style="font-size:15px;font-weight:700;color:var(--text)">${u.name}</div><div class="mono" style="font-size:9px;color:var(--text-3)">${u.id}</div></div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Username</label><div class="mono">${u.username}</div></div><div class="fg" style="margin:0"><label>Role</label><div>${roleLabel(u.role)}</div></div><div class="fg" style="margin:0"><label>Email</label><div style="font-size:12px">${u.email}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(u.active?'active':'off_duty')}</div></div><div class="fg" style="margin:0"><label>Created</label><div class="mono" style="font-size:10px">${fmtDate(u.created)}</div></div><div class="fg" style="margin:0"><label>Last Login</label><div class="mono" style="font-size:10px">${timeAgo(u.lastLogin)}</div></div></div>${u.id!==state.profile?.id?`<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="modal-btn ${u.active?'danger':'success'}" onclick="toggleUserActive('${u.id}')">${u.active?'Deactivate':'Activate'} User</button></div>`:'<div style="font-size:11px;color:var(--text-3)">This is your account</div>'}`);
 }
 
-function toggleUserActive(id) {
+async function toggleUserActive(id) {
   const u=state.db.profiles.find(u=>u.id===id);
   if(!u) return;
   u.active=!u.active;
-  scheduleSave();
+  const { error } = await supabase.from('profiles').update({ active: u.active }).eq('id', id);
+  if (error) { console.error('profiles update failed:', error.message); toast('Could not update user', 'warning'); }
   addAudit(state.profile.username,'User Status', `${u.name} → ${u.active?'active':'deactivated'}`);
   closeModal(); renderUserMgmt();
   toast(`${u.name} ${u.active?'activated':'deactivated'}`, 'success');
@@ -1856,8 +2123,12 @@ async function saveUser() {
   if(!validateEmail(email)) { toast('Invalid email format','error'); return; }
   if(state.db.profiles.some(u=>u.username===user)) { toast('Username taken','error'); return; }
   
-  // In production, this would call a Supabase Edge Function to create the auth user
-  // For now, we just add the profile
+  // In production, this would call a Supabase Edge Function to create the
+  // auth user + a matching profiles row. The real `profiles` table has a
+  // foreign key to auth.users, so we can't insert a usable row from the
+  // client — this stays a local, session-only preview until that user is
+  // actually invited via the Supabase Dashboard (it will disappear on next
+  // reload, once `profiles` is refetched from Supabase).
   state.db.profiles.push({
     id:uid('USR'), name, username:user,
     email: email,
@@ -1865,10 +2136,9 @@ async function saveUser() {
     active:true,
     created: new Date().toISOString(), lastLogin: null,
   });
-  scheduleSave();
   addAudit(state.profile.username,'User Created', `${name} (${user})`);
   closeModal(); renderUserMgmt();
-  toast(`${name} created. Send invitation email via Supabase Dashboard.`, 'success');
+  toast(`${name} previewed. Send invitation email via Supabase Dashboard.`, 'success');
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -1929,7 +2199,12 @@ function importData(e) {
     try {
       const data = JSON.parse(ev.target.result);
       if (!data.trucks || !data.drivers) throw new Error('Invalid format');
-      state.db = data; scheduleSave(); buildBadges(); buildAlerts();
+      // Older exports may carry legacy short ids (e.g. 'TRK001') from
+      // pre-migration backups — those aren't valid uuids, so remap them.
+      const isUuid = s => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+      const looksLegacy = data.trucks.length && !isUuid(data.trucks[0].id);
+      state.db = looksLegacy ? remapSeedIds(data) : data;
+      scheduleSave(); buildBadges(); buildAlerts();
       renderSection(state.currentSection);
       toast('Data imported successfully','success');
     } catch(err) { toast('Import failed — invalid file','error'); }
@@ -1959,17 +2234,26 @@ function clearAllData() {
   openModal('Confirm: Clear All Data', `<div class="vault-banner"><div class="vault-banner-label">⚠ IRREVERSIBLE ACTION</div><div class="vault-banner-desc">This will permanently delete all trucks, drivers, trips, maintenance records, and financial data. This cannot be undone.</div></div><div class="fg"><label>Type CLEAR to confirm</label><input id="clearConfirm" placeholder="CLEAR" autocomplete="off"/></div><div style="display:flex;gap:8px;margin-top:10px"><button class="modal-btn danger" onclick="executeClearData()">Delete Everything</button><button class="modal-btn ghost" onclick="closeModal()">Cancel</button></div>`);
 }
 
-function executeClearData() {
+async function executeClearData() {
   if (document.getElementById('clearConfirm')?.value !== 'CLEAR') { toast('Type CLEAR to confirm','error'); return; }
-  state.db = seedData(); scheduleSave(); buildBadges(); buildAlerts();
-  closeModal(); renderSection(state.currentSection);
+  closeModal();
+  toast('Clearing all data…', 'info', 2000);
+  await clearAllTables();
+  state.db = remapSeedIds(seedData());
+  await saveDB();
+  buildBadges(); buildAlerts();
+  renderSection(state.currentSection);
   toast('All data cleared','warning');
 }
 
-function resetToSeed() {
+async function resetToSeed() {
   if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   if (!confirm('Reset to seed data? This will replace all data with sample data.')) return;
-  state.db = seedData(); scheduleSave(); buildBadges(); buildAlerts();
+  toast('Resetting to seed data…', 'info', 2000);
+  await clearAllTables();
+  state.db = remapSeedIds(seedData());
+  await saveDB();
+  buildBadges(); buildAlerts();
   renderSection(state.currentSection);
   toast('Reset to seed data','success');
 }
@@ -2007,29 +2291,7 @@ function closeFinanceLock() {
 
 function requireAdminAction(callback, actionKey) {
   if (isAdmin()) { callback(); return; }
-  state.adminPinCallback = callback;
-  state.adminPinAction   = actionKey;
-  document.getElementById('adminPinDesc').textContent = `Admin credentials required to ${actionKey.replace('_',' ')}.`;
-  document.getElementById('adminPinOverlay').style.display='flex';
-  setTimeout(()=>document.getElementById('adminPinInput').focus(), 100);
-}
-
-function submitAdminPin() {
-  const pass = document.getElementById('adminPinInput').value;
-  if (pass === ADMIN_PASS) {
-    closeAdminPin();
-    if (state.adminPinCallback) { state.adminPinCallback(); state.adminPinCallback=null; }
-  } else {
-    document.getElementById('adminPinError').textContent='Incorrect password.';
-    document.getElementById('adminPinInput').value='';
-  }
-}
-
-function closeAdminPin() {
-  document.getElementById('adminPinOverlay').style.display='none';
-  document.getElementById('adminPinInput').value='';
-  document.getElementById('adminPinError').textContent='';
-  state.adminPinCallback=null;
+  toast('Admin rights required for this action', 'error');
 }
 
 function showChangePasswordModal() {

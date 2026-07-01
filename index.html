@@ -18,7 +18,7 @@
 </head>
 <body>
 
-    <!-- ═══════════ LOADER ═══════════ -->
+  
     <div class="loader" id="loader">
         <div class="loader-inner">
             <div class="loader-emblem">
@@ -994,37 +994,7 @@
         </div>
     </div>
 
-    <!-- ══ ADMIN PIN MODAL ══ -->
-    <div class="modal-backdrop" id="adminPinOverlay">
-        <div class="modal-box vault-modal" onclick="event.stopPropagation()">
-            <div class="modal-hdr">
-                <div class="modal-title" style="display:flex;align-items:center;gap:9px">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    Admin Required
-                </div>
-            </div>
-            <div class="modal-body">
-                <div class="vault-banner">
-                    <div class="vault-banner-label">ADMIN ONLY ACTION</div>
-                    <div class="vault-banner-desc" id="adminPinDesc">This action requires admin credentials.</div>
-                </div>
-                <div class="fg">
-                    <label>Admin Password</label>
-                    <div class="pw-wrap">
-                        <input type="password" id="adminPinInput" placeholder="Enter admin password" autocomplete="off" onkeydown="if(event.key==='Enter')submitAdminPin()" />
-                        <button class="pw-eye" type="button" onclick="togglePwVis('adminPinInput',this)" tabindex="-1">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="login-error" id="adminPinError" style="min-height:1.2em"></div>
-                <div style="display:flex;gap:8px;margin-top:8px">
-                    <button class="modal-btn primary" style="flex:1" onclick="submitAdminPin()">Authenticate</button>
-                    <button class="modal-btn ghost" onclick="closeAdminPin()">Cancel</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    
 
     <!-- ══ TOAST STACK ══ -->
     <div id="toastStack"></div>
