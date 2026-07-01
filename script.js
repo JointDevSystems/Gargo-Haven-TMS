@@ -2525,18 +2525,7 @@ window.showAdminSection = function(sec, btn) {
   origShowAdminSection(sec, btn);
 };
 
-/* ──────────────────────────────────────────────────────────────────
-   § 38  BOOTSTRAP
-────────────────────────────────────────────────────────────────── */
-(function init() {
-  try {
-    runLoader();
-  } catch(e) {
-    console.error('Initialization error:', e);
-    toast('System initialization error. Please refresh.', 'error');
-  }
-
-  // ================== PUBLIC BOOKINGS ==================
+ // ================== PUBLIC BOOKINGS ==================
 
 let _publicBookingFilter = 'pending';
 
@@ -2632,4 +2621,14 @@ async function refreshPublicBookings() {
   toast('Refreshing...', 'info');
   await renderPublicBookings();
 }
+
+(function init() {
+  try {
+    runLoader();
+  } catch(e) {
+    console.error('Initialization error:', e);
+    toast('System initialization error. Please refresh.', 'error');
+  }
+
+
 })();
