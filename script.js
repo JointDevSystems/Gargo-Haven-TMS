@@ -2715,4 +2715,5 @@ async function refreshPublicBookings() {
   await renderPublicBookings();
 }
 
+
 })();
