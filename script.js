@@ -763,7 +763,19 @@ async function loadUserProfile(userId) {
 
 async function logout() {
   if (!confirm('Are you sure you want to sign out?')) return;
-  addAudit(state.profile?.username || 'system', 'Logout', 'User signed out');
+  await performLogout('User signed out');
+}
+
+// Used by the idle timer. Must NOT prompt with confirm() — if the user is
+// genuinely away (the whole point of an idle timeout), no one is there to
+// click OK, so a confirm()-gated logout() never actually fires and the
+// session stays open indefinitely.
+async function forceLogout(reason) {
+  await performLogout(reason || 'Session timed out (idle)');
+}
+
+async function performLogout(auditDetail) {
+  addAudit(state.profile?.username || 'system', 'Logout', auditDetail);
   await supabase.auth.signOut();
   state.currentUser = null;
   state.profile = null;
@@ -2431,7 +2443,7 @@ function startIdleTimer() {
     if (Date.now() - state.lastActivity > IDLE_TIMEOUT) {
       clearIdleTimer();
       toast('Session timed out — please sign in again','warning',5000);
-      setTimeout(logout, 2000);
+      setTimeout(()=>forceLogout('Session timed out (idle)'), 2000);
     }
   }, 60000);
 }
