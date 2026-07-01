@@ -456,24 +456,23 @@ async function clearAllTables() {
 
 async function initDB() {
   const loaded = await loadDB();
-  if (loaded && (loaded.trucks.length || loaded.drivers.length || loaded.shippingLines.length)) {
+  if (loaded) {
     state.db = loaded;
   } else {
-    state.db = remapSeedIds(seedData());
-    await saveDB();
+    // Provide empty structure (no seed data)
+    state.db = {
+      trucks: [], drivers: [], trips: [], maintenance: [], fuel: [],
+      shippingLines: [], shutouts: [], interchange: [], requisitions: [],
+      workshop: [], invoices: [], billingRates: {}, allocationRules: [],
+      trackingPositions: {}, auditLog: [], settings: {}, profiles: []
+    };
   }
   if (!state.db.settings) {
     state.db.settings = { backupDate: null, mapApiKey: '', whatsapp: true, mpesa: false, companyName: 'Gargo Logistics Ltd' };
   }
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 3  UTILITY HELPERS
-────────────────────────────────────────────────────────────────── */
-// Real tables use uuid primary keys, so uid() now returns a genuine
-// uuid v4. The `pfx` param is kept (and ignored) so every existing
-// call site — uid('TRK'), uid('DRV'), uid('AUD')… — keeps working
-// unchanged.
+
 function uid(pfx='ID') {
   if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
