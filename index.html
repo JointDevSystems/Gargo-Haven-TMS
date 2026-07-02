@@ -425,7 +425,7 @@
                                             <div class="fg"><label>Driver</label><select id="d_driver"></select></div>
                                         </div>
                                         <div class="form-row-2">
-                                            <div class="fg"><label>Container No.</label><input id="d_container" placeholder="ABCD1234567" /></div>
+                                            <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="ABCD1234567 — pick existing or type new" /></div>
                                             <div class="fg"><label>Container Type</label>
                                                 <select id="d_ctype">
                                                     <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
@@ -716,6 +716,7 @@
                                     <div class="form-card-body">
                                         <div class="fg"><label>Select Truck</label><select id="ma_truck"></select></div>
                                         <div class="fg"><label>Select Driver</label><select id="ma_driver"></select></div>
+                                        <div class="fg"><label>Apply to Active Trip <span class="label-optional">(optional)</span></label><select id="ma_assign_trip"></select></div>
                                         <div class="fg"><label>Notes</label><input id="ma_notes" placeholder="Assignment notes…" /></div>
                                         <button class="submit-btn" onclick="manualAssignDriverToTruck()">Assign Driver to Truck →</button>
                                     </div>
@@ -724,7 +725,7 @@
                                     <div class="form-card-head">Assign Container to Trip</div>
                                     <div class="form-card-body">
                                         <div class="fg"><label>Active Trip</label><select id="ma_trip"></select></div>
-                                        <div class="fg"><label>Container Number</label><input id="ma_container" placeholder="ABCD1234567" /></div>
+                                        <div class="fg"><label>Container Number</label><input id="ma_container" list="containerHistory" placeholder="ABCD1234567 — pick existing or type new" /></div>
                                         <div class="fg"><label>Container Type</label>
                                             <select id="ma_ctype">
                                                 <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
@@ -1014,6 +1015,33 @@
     </div>
 
     
+
+    <!-- ══ DRIVER PORTAL (role: driver) ══ -->
+    <div class="shell" id="driverPortal" style="display:none;flex-direction:column">
+        <div class="section-topbar">
+            <div class="section-topbar-left">
+                <div class="rail-brand" style="padding:0">
+                    <span class="rail-brand-name">GARGO</span>
+                    <span class="rail-brand-sep">·</span>
+                    <span class="rail-brand-sub">Driver</span>
+                </div>
+            </div>
+            <div class="section-topbar-right">
+                <div class="topbar-date" id="dp_clock">--:--</div>
+                <div class="role-chip" id="dp_driverRole">Driver</div>
+                <div class="user-av-rail" id="dp_driverAv">DR</div>
+                <div class="user-name-rail" id="dp_driverName">Driver</div>
+                <button class="action-btn ghost" onclick="logout()">Sign Out</button>
+            </div>
+        </div>
+        <div style="padding:18px;max-width:640px;margin:0 auto;width:100%" id="dp_body">
+            <div class="empty-state"><div class="empty-state-label">Loading…</div></div>
+        </div>
+    </div>
+
+    <!-- Shared: container-number suggestions, sourced from live trip / shutout / interchange
+         records so operators can pick an existing container or type a new one. -->
+    <datalist id="containerHistory"></datalist>
 
     <!-- ══ TOAST STACK ══ -->
     <div id="toastStack"></div>

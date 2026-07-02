@@ -166,8 +166,8 @@ function seedData() {
 function truckToRow(t)  { return { id:t.id, reg:t.reg, make:t.make, type:t.type, year:t.year, colour:t.colour, status:t.status, fuel_pct:Math.round(t.fuelPct), mileage:t.mileage, last_service:t.lastService, next_service:t.nextService, notes:t.notes, licence_plate:t.licencePlate, vin:t.vin }; }
 function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type, year:r.year, colour:r.colour, status:r.status, fuelPct:r.fuel_pct, mileage:r.mileage, driver:null, lastService:r.last_service, nextService:r.next_service, notes:r.notes||'', img:'', licencePlate:r.licence_plate, vin:r.vin||'' }; }
 
-function driverToRow(d)  { return { id:d.id, name:d.name, phone:d.phone, licence:d.licence, licence_exp:d.licenceExp, status:d.status, truck_id:d.truckId||null, trips_today:d.tripsToday, current_load:d.load, location:d.location, id_no:d.idNo, rating:d.rating }; }
-function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence:r.licence, licenceExp:r.licence_exp, status:r.status, truckId:r.truck_id, tripsToday:r.trips_today, load:r.current_load, location:r.location, idNo:r.id_no, rating:r.rating }; }
+function driverToRow(d)  { return { id:d.id, name:d.name, phone:d.phone, licence:d.licence, licence_exp:d.licenceExp, status:d.status, truck_id:d.truckId||null, trips_today:d.tripsToday, current_load:d.load, location:d.location, id_no:d.idNo, rating:d.rating, profile_id:d.profileId||null }; }
+function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence:r.licence, licenceExp:r.licence_exp, status:r.status, truckId:r.truck_id, tripsToday:r.trips_today, load:r.current_load, location:r.location, idNo:r.id_no, rating:r.rating, profileId:r.profile_id||null }; }
 
 function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref }; }
 function tripFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference }; }
@@ -519,7 +519,7 @@ function fmtTime(iso) { return new Date(iso).toLocaleTimeString('en-KE',{hour:'2
 function fmtDate(iso) { return new Date(iso).toLocaleDateString('en-KE',{day:'2-digit',month:'short',year:'numeric'}); }
 
 function sbadge(status) {
-  const labels={ available:'Available', on_trip:'On Trip', maintenance:'Maintenance', breakdown:'Breakdown', off_duty:'Off Duty', grounded:'Grounded', active:'Active', completed:'Completed', delayed:'Delayed', pending:'Pending', approved:'Approved', rejected:'Rejected', fulfilled:'Fulfilled', overdue:'Overdue', draft:'Draft', sent:'Sent', paid:'Paid', partial:'Partial', critical:'Critical', in_progress:'In Progress', reported:'Reported', diagnosed:'Diagnosed', suspended:'Suspended', reconciled:'Reconciled', open:'Open', resolved:'Resolved', redelivery:'Redelivery' };
+  const labels={ available:'Available', on_trip:'On Trip', maintenance:'Maintenance', breakdown:'Breakdown', off_duty:'Off Duty', grounded:'Grounded', active:'Active', completed:'Completed', delayed:'Delayed', pending:'Pending', approved:'Approved', rejected:'Rejected', fulfilled:'Fulfilled', overdue:'Overdue', draft:'Draft', sent:'Sent', paid:'Paid', partial:'Partial', critical:'Critical', in_progress:'In Progress', reported:'Reported', diagnosed:'Diagnosed', suspended:'Suspended', reconciled:'Reconciled', open:'Open', resolved:'Resolved', redelivery:'Redelivery', loaded:'Loaded', offloaded:'Offloaded' };
   return `<span class="sbadge s-${status}">${labels[status]||status}</span>`;
 }
 
@@ -529,6 +529,11 @@ function lineName(id) { if(!id)return '—'; const l=state.db.shippingLines.find
 function initials(name) { if(!name)return '?'; return name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase(); }
 function fuelColour(pct) { if(pct >60)return 'var(--green)'; if(pct >30)return 'var(--amber)'; return 'var(--red)'; }
 function isAdmin() { return state.profile?.role === 'admin'; }
+function isDriver() { return state.profile?.role === 'driver'; }
+// The logged-in driver's own row in `drivers`, matched via drivers.profile_id
+// (added alongside the driver auth/role migration). Returns null until an
+// admin links the driver record to that person's login.
+function myDriverRecord() { return state.db.drivers.find(d => d.profileId === state.profile?.id) || null; }
 function canFinance() { return state.financeUnlocked; }
 function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
 function validatePhone(phone) { return /^\+?[0-9\s\-()]{7,20}$/.test(phone); }
@@ -732,7 +737,6 @@ window.doLogin = async function() {
     }).eq('id', data.user.id);
 
     document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('shell').style.display = 'flex';
     bootShell();
 
   } catch (e) {
@@ -805,6 +809,8 @@ async function performLogout(auditDetail) {
   state.settingsUnlocked = false;
   clearIdleTimer();
   document.getElementById('shell').style.display = 'none';
+  const dp = document.getElementById('driverPortal');
+  if (dp) dp.style.display = 'none';
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('loginUser').value = '';
   document.getElementById('loginPass').value = '';
@@ -824,6 +830,21 @@ function togglePwVis(inputId, btn) {
    § 7  SHELL BOOT
 ────────────────────────────────────────────────────────────────── */
 function bootShell() {
+  // Drivers get a dedicated, cut-down portal instead of the full ops/admin
+  // shell — they only ever need their own truck + trip, never the sidebar.
+  if (isDriver()) {
+    const shellEl = document.getElementById('shell');
+    if (shellEl) shellEl.style.display = 'none';
+    const dp = document.getElementById('driverPortal');
+    if (dp) dp.style.display = 'flex';
+    startClock();
+    refreshContainerHistory();
+    renderDriverPortal();
+    startIdleTimer();
+    return;
+  }
+  const dp = document.getElementById('driverPortal');
+  if (dp) dp.style.display = 'none';
   document.getElementById('shell').style.display='flex';
   updateUserChip();
   startClock();
@@ -850,7 +871,7 @@ function updateUserChip() {
   if(mh) mh.innerHTML= `<div class="user-menu-header-name">${p.name}</div><div class="user-menu-header-role">${roleLabel(p.role)}</div>`;
 }
 
-function roleLabel(r) { const m={ admin:'System Administrator', ops:'Operations Officer', finance:'Finance Manager', dispatch:'Dispatch Controller', viewer:'Read-Only Viewer' }; return m[r]||r; }
+function roleLabel(r) { const m={ admin:'System Administrator', ops:'Operations Officer', finance:'Finance Manager', dispatch:'Dispatch Controller', viewer:'Read-Only Viewer', driver:'Driver' }; return m[r]||r; }
 
 function startClock() {
   const update=()=>{
@@ -859,6 +880,8 @@ function startClock() {
     if(clk) clk.textContent=now.toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
     const td=document.getElementById('todayDate');
     if(td) td.textContent=now.toLocaleDateString('en-KE',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
+    const dpc=document.getElementById('dp_clock');
+    if(dpc) dpc.textContent=now.toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
   };
   update();
   setInterval(update,1000);
@@ -1135,7 +1158,7 @@ function showDriverDetail(id) {
   if (!d) return;
   const licDays = Math.round((new Date(d.licenceExp)-Date.now())/86400000);
   const licWarn = licDays < 90;
-  openModal(`Driver — ${d.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div style="width:52px;height:52px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--gold)">${initials(d.name)}</div><div><div style="font-size:16px;font-weight:700;color:var(--text)">${d.name}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">${d.id}</div></div><div style="margin-left:auto">${sbadge(d.status)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Phone</label><div class="mono" style="font-size:12px;color:var(--text)">${d.phone}</div></div><div class="fg" style="margin:0"><label>Licence</label><div class="mono" style="font-size:12px;color:var(--text)">${d.licence}</div></div><div class="fg" style="margin:0"><label>Licence Expiry</label><div style="font-size:12px;color:${licWarn?'var(--amber)':'var(--text)'};font-weight:${licWarn?'700':'400'}">${fmtDate(d.licenceExp)}${licWarn?' ⚠':''}</div></div><div class="fg" style="margin:0"><label>Trips Today</label><div class="mono" style="font-size:16px;color:var(--gold);font-weight:700">${d.tripsToday}</div></div><div class="fg" style="margin:0"><label>Assigned Truck</label><div style="font-size:12px;color:var(--text)">${d.truckId?truckName(d.truckId):'Not assigned'}</div></div><div class="fg" style="margin:0"><label>Current Load</label><div class="mono" style="font-size:11px;color:var(--text)">${d.load||'None'}</div></div><div class="fg" style="margin:0"><label>Location</label><div style="font-size:12px;color:var(--text)">${d.location}</div></div><div class="fg" style="margin:0"><label>Rating</label><div style="font-size:12px;color:var(--gold)">⭐ ${d.rating||0}/5.0</div></div><div class="fg" style="margin:0"><label>ID No.</label><div class="mono" style="font-size:12px;color:var(--text)">${d.idNo||'—'}</div></div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','off_duty','suspended'].map(s=>`<button class="filter-btn${d.status===s?' active':''}" onclick="quickSetDriverStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`:''}`);
+  openModal(`Driver — ${d.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div style="width:52px;height:52px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--gold)">${initials(d.name)}</div><div><div style="font-size:16px;font-weight:700;color:var(--text)">${d.name}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">${d.id}</div></div><div style="margin-left:auto">${sbadge(d.status)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Phone</label><div class="mono" style="font-size:12px;color:var(--text)">${d.phone}</div></div><div class="fg" style="margin:0"><label>Licence</label><div class="mono" style="font-size:12px;color:var(--text)">${d.licence}</div></div><div class="fg" style="margin:0"><label>Licence Expiry</label><div style="font-size:12px;color:${licWarn?'var(--amber)':'var(--text)'};font-weight:${licWarn?'700':'400'}">${fmtDate(d.licenceExp)}${licWarn?' ⚠':''}</div></div><div class="fg" style="margin:0"><label>Trips Today</label><div class="mono" style="font-size:16px;color:var(--gold);font-weight:700">${d.tripsToday}</div></div><div class="fg" style="margin:0"><label>Assigned Truck</label><div style="font-size:12px;color:var(--text)">${d.truckId?truckName(d.truckId):'Not assigned'}</div></div><div class="fg" style="margin:0"><label>Current Load</label><div class="mono" style="font-size:11px;color:var(--text)">${d.load||'None'}</div></div><div class="fg" style="margin:0"><label>Location</label><div style="font-size:12px;color:var(--text)">${d.location}</div></div><div class="fg" style="margin:0"><label>Rating</label><div style="font-size:12px;color:var(--gold)">⭐ ${d.rating||0}/5.0</div></div><div class="fg" style="margin:0"><label>ID No.</label><div class="mono" style="font-size:12px;color:var(--text)">${d.idNo||'—'}</div></div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','off_duty','suspended'].map(s=>`<button class="filter-btn${d.status===s?' active':''}" onclick="quickSetDriverStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:14px"><label style="font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;font-family:var(--font-mono)">Linked Login (Driver Portal Access)</label><select onchange="linkDriverProfile('${id}', this.value)" style="width:100%;margin-top:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px;border-radius:5px;font-size:12px"><option value="">— Not linked —</option>${state.db.profiles.filter(p=>p.role==='driver').map(p=>`<option value="${p.id}" ${d.profileId===p.id?'selected':''}>${p.name} (${p.username})</option>`).join('')}</select></div></div>`:''}`);
 }
 
 function quickSetDriverStatus(id, status) {
@@ -1147,6 +1170,22 @@ function quickSetDriverStatus(id, status) {
   closeModal();
   renderDrivers(_driverFilter);
   toast(`${d.name} status updated`, 'success');
+}
+
+// Links (or unlinks) this driver record to a role:'driver' login, so that
+// person's Driver Portal shows their truck/trip. The profile itself must
+// already exist (invited via Supabase Dashboard / User Management, same
+// as any other role) — this only sets drivers.profile_id.
+function linkDriverProfile(driverId, profileId) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const d = state.db.drivers.find(d=>d.id===driverId);
+  if (!d) return;
+  d.profileId = profileId || null;
+  scheduleSave();
+  const p = profileId ? state.db.profiles.find(p=>p.id===profileId) : null;
+  addAudit(state.profile.username, 'Driver Login Linked', `${d.name} ↔ ${p ? `${p.name} (${p.username})` : 'unlinked'}`);
+  toast(p ? `${d.name} linked to ${p.name}'s login` : `${d.name} unlinked from login`, 'success');
+  showDriverDetail(driverId);
 }
 
 function showAddDriverModal() {
@@ -1203,14 +1242,19 @@ function showTripDetail(id) {
   const t = state.db.trips.find(t=>t.id===id);
   if (!t) return;
   const line = state.db.shippingLines.find(l=>l.id===t.shippingLine);
-  openModal(`Trip — ${t.container}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Update Status</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['active','delayed','completed'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTripStatus('${id}','${s}')">${s}</button>`).join('')}</div></div>`:''}`);
+  openModal(`Trip — ${t.container}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['active','loaded','on_trip','offloaded','breakdown','delayed','completed'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`:''}`);
 }
 
-function quickSetTripStatus(id, status) {
-  const t = state.db.trips.find(t=>t.id===id);
-  if (!t) return;
+// Shared core: applies a trip status change, cascading truck/driver status
+// resets exactly as before. Used by both the admin quick-set control and
+// the driver-portal step buttons so behaviour never diverges between them.
+function applyTripStatus(t, status, actorLabel) {
   const old = t.status;
   t.status = status;
+  if (status === 'breakdown') {
+    const truck = state.db.trucks.find(tr=>tr.id===t.truckId);
+    if (truck) truck.status = 'breakdown';
+  }
   if (status === 'completed') {
     const truck = state.db.trucks.find(tr=>tr.id===t.truckId);
     const driver= state.db.drivers.find(d=>d.id===t.driverId);
@@ -1220,10 +1264,82 @@ function quickSetTripStatus(id, status) {
   }
   scheduleSave();
   buildBadges();
-  addAudit(state.profile.username, 'Trip Status Update', `${t.container} ${old} → ${status}`);
+  addAudit(actorLabel, 'Trip Status Update', `${t.container} ${old} → ${status}`);
+  return old;
+}
+
+function quickSetTripStatus(id, status) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const t = state.db.trips.find(t=>t.id===id);
+  if (!t) return;
+  applyTripStatus(t, status, state.profile.username);
   closeModal();
-  renderTrips(_tripFilter);
+  if (document.getElementById('tripsList')) renderTrips(_tripFilter);
   toast(`Trip updated to ${status}`, 'success');
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § DRIVER PORTAL — self-service view for role:'driver' accounts.
+   Drivers only ever see their own truck + trip; every write goes
+   through applyTripStatus() so it's identical to the admin path, but
+   is gated to trips actually assigned to that driver.
+────────────────────────────────────────────────────────────────── */
+const DRIVER_TRIP_STEPS = ['loaded','on_trip','offloaded','breakdown','completed'];
+
+function renderDriverPortal() {
+  const p = state.profile;
+  const av = document.getElementById('dp_driverAv'); if (av) av.textContent = initials(p?.name||'D');
+  const nm = document.getElementById('dp_driverName'); if (nm) nm.textContent = p?.name||'Driver';
+  const rl = document.getElementById('dp_driverRole'); if (rl) rl.textContent = roleLabel(p?.role);
+
+  const body = document.getElementById('dp_body');
+  if (!body) return;
+
+  const driver = myDriverRecord();
+  if (!driver) {
+    body.innerHTML = `<div class="empty-state"><div class="empty-state-icon">🚚</div><div class="empty-state-label">Your login isn't linked to a driver record yet. Ask an administrator to link it in Driver → Edit.</div></div>`;
+    return;
+  }
+
+  const truck = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
+  const myTrips = state.db.trips
+    .filter(t=>t.driverId===driver.id && t.status!=='completed')
+    .sort((a,b)=>new Date(b.startTime)-new Date(a.startTime));
+  const active = myTrips[0];
+
+  body.innerHTML = `
+    <div class="panel" style="margin-bottom:14px">
+      <div class="panel-head"><span class="panel-title">My Truck</span>${truck?sbadge(truck.status):''}</div>
+      <div style="padding:14px;font-size:13px;color:var(--text)">${truck ? `${truck.reg} — ${truck.make}` : 'No truck currently assigned'}</div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">My Active Trip</span></div>
+      <div style="padding:14px">
+        ${active ? `
+          <div style="margin-bottom:12px">
+            <div class="mono" style="color:var(--gold);font-size:15px">${active.container}</div>
+            <div style="font-size:12px;color:var(--text-2);margin-top:2px">${active.origin} → ${active.dest}</div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:4px">${active.workType} · ${active.ctype}</div>
+            <div style="margin-top:8px">${sbadge(active.status)}</div>
+          </div>
+          <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Update Trip Step</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${DRIVER_TRIP_STEPS.map(s=>`<button class="filter-btn${active.status===s?' active':''}" onclick="driverAdvanceTrip('${active.id}','${s}')">${s.replace('_',' ')}</button>`).join('')}
+          </div>
+        ` : '<div class="empty-state"><div class="empty-state-label">No active trip assigned right now</div></div>'}
+      </div>
+    </div>
+  `;
+}
+
+function driverAdvanceTrip(tripId, status) {
+  const driver = myDriverRecord();
+  const t = state.db.trips.find(tr=>tr.id===tripId);
+  if (!driver || !t || t.driverId !== driver.id) { toast('Not authorized for this trip', 'error'); return; }
+  if (!DRIVER_TRIP_STEPS.includes(status)) { toast('Invalid status', 'error'); return; }
+  applyTripStatus(t, status, state.profile.username);
+  toast(`Trip updated to ${status.replace('_',' ')}`, 'success');
+  renderDriverPortal();
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -1292,6 +1408,7 @@ function createDispatch() {
   buildBadges();
   addAudit(state.profile.username, 'Dispatch Created', `${cont} — ${origin} → ${dest}`);
   toast(`Dispatch created — ${cont}`, 'success');
+  refreshContainerHistory();
   renderDispatch();
 }
 
@@ -1389,6 +1506,7 @@ function processBulkDispatch() {
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Bulk Dispatch', `${created} dispatches imported`);
   toast(`${created} dispatches created`, 'success');
+  refreshContainerHistory();
   document.getElementById('bulkDispatchPreview').style.display = 'none';
   renderDispatchQueue();
 }
@@ -1523,7 +1641,7 @@ function renderShutout(f){
 }
 
 function showAddShutoutModal() {
-  openModal('Flag Shutout Container', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="sh_cont" placeholder="MSCU0000000"/></div><div class="fg"><label>Shipping Line</label><select id="sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="sh_vessel" placeholder="MSC VESSEL NAME"/></div><div class="fg"><label>Voyage No.</label><input id="sh_voyage" placeholder="VA-001"/></div></div><div class="fg"><label>Reason</label><input id="sh_reason" placeholder="Why was this shutout?"/></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="sh_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="sh_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="sh_notes" rows="2"></textarea></div><button class="submit-btn" onclick="saveShutout()">Flag Shutout →</button>`);
+  openModal('Flag Shutout Container', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="sh_cont" list="containerHistory" placeholder="MSCU0000000 — pick existing or type new"/></div><div class="fg"><label>Shipping Line</label><select id="sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div></div><div class="form-row-2"><div class="fg"><label>Vessel</label><input id="sh_vessel" placeholder="MSC VESSEL NAME"/></div><div class="fg"><label>Voyage No.</label><input id="sh_voyage" placeholder="VA-001"/></div></div><div class="fg"><label>Reason</label><input id="sh_reason" placeholder="Why was this shutout?"/></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="sh_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="sh_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="sh_notes" rows="2"></textarea></div><button class="submit-btn" onclick="saveShutout()">Flag Shutout →</button>`);
 }
 
 function saveShutout() {
@@ -1544,6 +1662,7 @@ function saveShutout() {
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Shutout Flagged', cont);
   closeModal(); renderShutout('all');
+  refreshContainerHistory();
   toast('Shutout flagged', 'success');
 }
 
@@ -1571,7 +1690,7 @@ function approveInterchange(id) {
 }
 
 function showAddInterchangeModal() {
-  openModal('Record Interchange', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="ic_cont" placeholder="MSCU0000000"/></div><div class="fg"><label>Type</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div></div><div class="form-row-2"><div class="fg"><label>Shipping Line</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div><div class="fg"><label>Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div><button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
+  openModal('Record Interchange', `<div class="form-row-2"><div class="fg"><label>Container No.</label><input id="ic_cont" list="containerHistory" placeholder="MSCU0000000 — pick existing or type new"/></div><div class="fg"><label>Type</label><select id="ic_type"><option>Gate-In</option><option>Gate-Out</option><option>Depot-In</option><option>Depot-Out</option></select></div></div><div class="form-row-2"><div class="fg"><label>Shipping Line</label><select id="ic_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div><div class="fg"><label>Condition</label><select id="ic_cond"><option>Good</option><option>Damaged</option><option>Dirty</option><option>Needs Repair</option></select></div></div><div class="form-row-2"><div class="fg"><label>Truck</label><select id="ic_truck">${state.db.trucks.map(t=>`<option value="${t.id}">${t.reg}</option>`).join('')}</select></div><div class="fg"><label>Driver</label><select id="ic_driver">${state.db.drivers.map(d=>`<option value="${d.id}">${d.name}</option>`).join('')}</select></div></div><div class="fg"><label>Notes</label><textarea id="ic_notes" rows="2" placeholder="Damage notes, remarks…"></textarea></div><button class="submit-btn" onclick="saveInterchange()">Record Interchange →</button>`);
 }
 
 function saveInterchange() {
@@ -1591,6 +1710,7 @@ function saveInterchange() {
   scheduleSave(); buildBadges();
   addAudit(state.profile.username, 'Interchange Recorded', cont);
   closeModal(); renderInterchange('all');
+  refreshContainerHistory();
   toast('Interchange recorded', 'success');
 }
 
@@ -1883,6 +2003,7 @@ function renderAllocManual() {
   fillSelect('ma_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.status}`]);
   fillSelect('ma_driver', state.db.drivers.filter(d=>d.status==='available'), d=>[d.id, d.name]);
   fillSelect('ma_trip',   state.db.trips.filter(t=>t.status==='active'), t=>[t.id, `${t.container} — ${t.origin}→${t.dest}`]);
+  fillSelect('ma_assign_trip', state.db.trips.filter(t=>t.status==='active'), t=>[t.id, `${t.container} — ${t.origin}→${t.dest}`]);
   renderStatusOverridePanel();
 }
 
@@ -1921,14 +2042,30 @@ function applyAllocation(truckId, driverId) {
 function manualAssignDriverToTruck() {
   const truck  = document.getElementById('ma_truck').value;
   const driver = document.getElementById('ma_driver').value;
+  const tripId = document.getElementById('ma_assign_trip') ? document.getElementById('ma_assign_trip').value : '';
   if (!truck||!driver) { toast('Select truck and driver','error'); return; }
   const t=state.db.trucks.find(t=>t.id===truck);
   const d=state.db.drivers.find(d=>d.id===driver);
   if(t) t.driver=driver;
   if(d) d.truckId=truck;
+
+  // Close the loop: if an active trip was selected, patch its
+  // truck_id/driver_id too so the dispatch record reflects the new
+  // assignment (same fields written by tripToRow / read by tripFromRow).
+  let trip = null;
+  if (tripId) {
+    trip = state.db.trips.find(tr=>tr.id===tripId);
+    if (trip) { trip.truckId=truck; trip.driverId=driver; }
+  }
+
   scheduleSave();
-  addAudit(state.profile.username, 'Manual Assignment', `${t?.reg} ← ${d?.name}`);
-  toast(`${d?.name} assigned to ${t?.reg}`, 'success');
+  addAudit(state.profile.username, 'Manual Assignment', `${t?.reg} ← ${d?.name}${trip ? ` (trip ${trip.container||trip.id})` : ''}`);
+  toast(trip ? `${d?.name} assigned to ${t?.reg} on trip ${trip.container||trip.id}` : `${d?.name} assigned to ${t?.reg}`, 'success');
+
+  // Refresh anything that displays trip truck/driver linkage.
+  if (document.getElementById('tripsList')) renderTrips(_tripFilter);
+  if (document.getElementById('dispatchQueue')) renderDispatchQueue();
+  renderAllocManual();
 }
 
 function manualAssignContainer() {
@@ -1940,6 +2077,7 @@ function manualAssignContainer() {
   if (t) { t.container=cont; t.ctype=document.getElementById('ma_ctype').value; }
   scheduleSave();
   addAudit(state.profile.username, 'Container Assignment', `${cont} → ${tripId}`);
+  refreshContainerHistory();
   toast(`${cont} assigned to trip`, 'success');
 }
 
@@ -2149,7 +2287,7 @@ async function toggleUserActive(id) {
 
 function showCreateUserModal() {
   if (!state.financeUnlocked) { openFinanceLock(()=>showCreateUserModal()); return; }
-  openModal('Create User', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="cu_name" placeholder="Jane Doe"/></div><div class="fg"><label>Username</label><input id="cu_user" placeholder="jane.doe"/></div></div><div class="fg"><label>Email</label><input id="cu_email" type="email" placeholder="jane@gargo.co.ke"/></div><div class="form-row-2"><div class="fg"><label>Role</label><select id="cu_role"><option value="ops">Operations Officer</option><option value="dispatch">Dispatch Controller</option><option value="finance">Finance Manager</option><option value="viewer">Read-Only Viewer</option><option value="admin">System Administrator</option></select></div></div><div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">User will receive an email invitation to set their password via Supabase Auth.</div><button class="submit-btn" onclick="saveUser()">Create User →</button>`);
+  openModal('Create User', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="cu_name" placeholder="Jane Doe"/></div><div class="fg"><label>Username</label><input id="cu_user" placeholder="jane.doe"/></div></div><div class="fg"><label>Email</label><input id="cu_email" type="email" placeholder="jane@gargo.co.ke"/></div><div class="form-row-2"><div class="fg"><label>Role</label><select id="cu_role"><option value="ops">Operations Officer</option><option value="dispatch">Dispatch Controller</option><option value="finance">Finance Manager</option><option value="viewer">Read-Only Viewer</option><option value="driver">Driver</option><option value="admin">System Administrator</option></select></div></div><div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">User will receive an email invitation to set their password via Supabase Auth.</div><button class="submit-btn" onclick="saveUser()">Create User →</button>`);
 }
 
 async function saveUser() {
@@ -2455,6 +2593,21 @@ document.addEventListener('click', e=>{
 function populateSelects() {
   fillSelect('f_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.make}`]);
   fillSelect('f_driver', state.db.drivers, d=>[d.id, d.name]);
+  refreshContainerHistory();
+}
+
+// Keeps the shared <datalist id="containerHistory"> in sync with every
+// container number already known to the system, so container fields can
+// behave as "pick an existing one, or just type a new one" combo boxes
+// without needing their own dedicated data source or schema change.
+function refreshContainerHistory() {
+  const dl = document.getElementById('containerHistory');
+  if (!dl) return;
+  const set = new Set();
+  (state.db.trips||[]).forEach(t=>{ if (t.container) set.add(t.container); });
+  (state.db.shutouts||[]).forEach(s=>{ if (s.container) set.add(s.container); });
+  (state.db.interchange||[]).forEach(i=>{ if (i.container) set.add(i.container); });
+  dl.innerHTML = [...set].sort().map(c=>`<option value="${c}"></option>`).join('');
 }
 
 /* ──────────────────────────────────────────────────────────────────

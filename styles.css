@@ -344,6 +344,8 @@ body::before {
 .s-partial { background: rgba(245,158,11,0.12); color: var(--amber); border-color: rgba(245,158,11,0.22); }
 .s-critical, .s-breakdown { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.22); }
 .s-in_progress { background: rgba(167,139,250,0.12); color: var(--purple); border-color: rgba(167,139,250,0.22); }
+.s-loaded { background: rgba(56,189,248,0.1); color: var(--blue); border-color: rgba(56,189,248,0.18); }
+.s-offloaded { background: rgba(167,139,250,0.12); color: var(--purple); border-color: rgba(167,139,250,0.22); }
 .s-reported { background: rgba(245,158,11,0.12); color: var(--amber); border-color: rgba(245,158,11,0.22); }
 .s-diagnosed { background: rgba(56,189,248,0.1); color: var(--blue); border-color: rgba(56,189,248,0.18); }
 .s-suspended { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.22); }
