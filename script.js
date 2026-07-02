@@ -202,7 +202,7 @@ function invFromRow(r){ return { id:r.id, client:r.client, date:r.date, due:r.du
 function allocToRow(a)  { return { id:a.id, name:a.name, description:a.desc, weight:a.weight, active:a.active }; }
 function allocFromRow(r){ return { id:r.id, name:r.name, desc:r.description, weight:r.weight, active:r.active }; }
 
-function auditToRow(a) { return { id:a.id, username:a.user, action:a.action, detail:a.detail, time:a.time }; }
+function auditToRow(a) { return { username:a.user, action:a.action, detail:a.detail, time:a.time }; }
 
 /* ---- generic upsert helper -------------------------------------- */
 async function upsertRows(table, rows, opts) {
@@ -291,7 +291,7 @@ async function loadDB() {
     });
 
     const auditLog = (auditRes.data || [])
-      .map(a => ({ id: a.id, user: a.username, action: a.action, detail: a.detail, time: a.time }))
+      .map(a => ({ id: a.id, user: a.username, action: a.action, detail: a.detail, time: a.time, _saved: true }))
       .sort((a, b) => new Date(b.time) - new Date(a.time));
 
     const s = settingsRes.data;
@@ -348,7 +348,12 @@ async function saveDB() {
     }));
     await upsertRows('tracking_positions', trackingRows, { onConflict: 'truck_id' });
 
-    await upsertRows('audit_log', db.auditLog.map(auditToRow));
+    const unsavedAudit = (db.auditLog || []).filter(a => !a._saved);
+    if (unsavedAudit.length) {
+      const { error: auditErr } = await supabase.from('audit_log').insert(unsavedAudit.map(auditToRow));
+      if (auditErr) console.error('audit_log save failed:', auditErr.message);
+      else unsavedAudit.forEach(a => { a._saved = true; });
+    }
 
     if (db.settings) {
       const { error } = await supabase.from('app_settings').upsert({
@@ -2501,7 +2506,7 @@ function startLivePulse() {
 function addAudit(user, action, detail) {
   if (!user) user = 'system';
   const log = state.db.auditLog || [];
-  log.unshift({ id:uid('AUD'), user, action, detail, time: new Date().toISOString() });
+  log.unshift({ user, action, detail, time: new Date().toISOString() });
   if (log.length > 500) log.splice(500);
   state.db.auditLog = log;
   scheduleSave();
