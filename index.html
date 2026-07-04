@@ -397,9 +397,11 @@
                             <div class="sec-title">Active Trips</div>
                             <div class="filter-row">
                                 <button class="filter-btn active" onclick="filterTrips('active',this)">Active</button>
-                                <button class="filter-btn" onclick="filterTrips('all',this)">Today</button>
-                                <button class="filter-btn" onclick="filterTrips('completed',this)">Completed</button>
+                                <button class="filter-btn" onclick="filterTrips('on_trip',this)">In Transit</button>
                                 <button class="filter-btn" onclick="filterTrips('delayed',this)">Delayed</button>
+                                <button class="filter-btn" onclick="filterTrips('breakdown',this)">Breakdown</button>
+                                <button class="filter-btn" onclick="filterTrips('completed',this)">Completed</button>
+                                <button class="filter-btn" onclick="filterTrips('all',this)">All</button>
                             </div>
                         </div>
                         <div class="trips-grid" id="tripsList"></div>
@@ -680,10 +682,14 @@
                         <div class="sec-toolbar">
                             <div class="sec-title-admin">Allocation Engine</div>
                             <div class="filter-row">
-                                <button class="filter-btn active" onclick="switchAllocTab('auto',this)">Auto-Allocation</button>
-                                <button class="filter-btn" onclick="switchAllocTab('manual',this)">Manual Allocation</button>
-                                <button class="filter-btn" onclick="switchAllocTab('requisitions',this)">Requisition Approvals</button>
-                                <button class="filter-btn" onclick="switchAllocTab('workshop',this)">Workshop Approvals</button>
+                                <button class="filter-btn active" onclick="switchAllocTab('auto',this)" id="allocTabBtn-auto">Auto-Allocation</button>
+                                <button class="filter-btn" onclick="switchAllocTab('manual',this)" id="allocTabBtn-manual">Manual Allocation</button>
+                                <button class="filter-btn admin-only-btn" onclick="switchAllocTab('requisitions',this)" id="allocTabBtn-requisitions">Requisition Approvals
+                                    <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                </button>
+                                <button class="filter-btn admin-only-btn" onclick="switchAllocTab('workshop',this)" id="allocTabBtn-workshop">Workshop Approvals
+                                    <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                </button>
                             </div>
                         </div>
                         <!-- Auto Allocation -->
@@ -736,7 +742,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="panel" style="margin-top:14px">
+                            <div class="panel" style="margin-top:14px" id="adminStatusOverridePanel">
                                 <div class="panel-head"><span class="panel-title">Manual Status Override <span style="font-size:10px;color:var(--text-3);font-weight:400;margin-left:8px">Admin only — use with caution</span></span></div>
                                 <div id="adminStatusPanel"></div>
                             </div>
@@ -1039,11 +1045,10 @@
         </div>
     </div>
 
-    <!-- Shared: container-number suggestions, sourced from live trip / shutout / interchange
-         records so operators can pick an existing container or type a new one. -->
+   
     <datalist id="containerHistory"></datalist>
 
-    <!-- ══ TOAST STACK ══ -->
+   
     <div id="toastStack"></div>
 
     <script src="script.js"></script>

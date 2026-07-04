@@ -124,6 +124,7 @@ function seedData() {
       { id:'USR002', username:'ops1', name:'Mary Achieng', role:'ops', email:'mary@gargo.co.ke', created:d(4380), lastLogin:d(24), active:true },
       { id:'USR003', username:'finance1', name:'David Kipkoech', role:'finance', email:'david@gargo.co.ke', created:d(2190), lastLogin:d(48), active:true },
       { id:'USR004', username:'dispatch1', name:'Aisha Mwangi', role:'dispatch', email:'aisha@gargo.co.ke', created:d(1095), lastLogin:d(12), active:true },
+      { id:'USR006', username:'clerk1', name:'Brian Otieno', role:'clerk', email:'brian@gargo.co.ke', created:d(720), lastLogin:d(6), active:true },
       { id:'USR005', username:'viewer1', name:'Tom Njoroge', role:'viewer', email:'tom@gargo.co.ke', created:d(730), lastLogin:d(168), active:false },
     ],
     auditLog: [
@@ -190,8 +191,8 @@ function shutoutFromRow(r){ return { id:r.id, container:r.container, vessel:r.ve
 function icToRow(i)  { return { id:i.id, container:i.container, line_id:i.line||null, date:i.date, type:i.type, truck_id:i.truck||null, driver_id:i.driver||null, condition:i.condition, notes:i.notes, status:i.status, img:i.img||'' }; }
 function icFromRow(r){ return { id:r.id, container:r.container, line:r.line_id, date:r.date, type:r.type, truck:r.truck_id, driver:r.driver_id, condition:r.condition, notes:r.notes, status:r.status, img:r.img||'' }; }
 
-function reqToRow(r)   { return { id:r.id, requester:r.requester, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approved_date:r.approvedDate, notes:r.notes }; }
-function reqFromRow(r) { return { id:r.id, requester:r.requester, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approvedDate:r.approved_date, notes:r.notes }; }
+function reqToRow(r)   { return { id:r.id, requester:r.requester, requester_id:r.requesterId||null, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approved_date:r.approvedDate, notes:r.notes }; }
+function reqFromRow(r) { return { id:r.id, requester:r.requester, requesterId:r.requester_id||null, category:r.category, items:r.items, amount:r.amount, date:r.date, status:r.status, approver:r.approver, approvedDate:r.approved_date, notes:r.notes }; }
 
 function wsToRow(w)  { return { id:w.id, truck_id:w.truckId||null, title:w.title, description:w.desc, tech:w.tech, status:w.status, reported:w.reported, diagnosed:w.diagnosed, parts:w.parts, labour:w.labour, total:w.total }; }
 function wsFromRow(r){ return { id:r.id, truckId:r.truck_id, title:r.title, desc:r.description, tech:r.tech, status:r.status, reported:r.reported, diagnosed:r.diagnosed, parts:r.parts, labour:r.labour, total:r.total }; }
@@ -530,6 +531,87 @@ function initials(name) { if(!name)return '?'; return name.split(' ').map(w=>w[0
 function fuelColour(pct) { if(pct >60)return 'var(--green)'; if(pct >30)return 'var(--amber)'; return 'var(--red)'; }
 function isAdmin() { return state.profile?.role === 'admin'; }
 function isDriver() { return state.profile?.role === 'driver'; }
+function isClerk() { return state.profile?.role === 'clerk'; }
+function currentRole() { return state.profile?.role || 'viewer'; }
+
+/* ──────────────────────────────────────────────────────────────────
+   § 3b  ROLE-BASED ACCESS CONTROL
+   Centralised map of which sidebar sections / admin-rail sections
+   each role may see. Admin always sees everything. This is UI-level
+   gating (hides buttons + blocks direct showSection/showAdminSection
+   calls) — real enforcement still lives in Supabase RLS, but this
+   keeps the client honest and the experience clean per role.
+────────────────────────────────────────────────────────────────── */
+const ROLE_SIDEBAR = {
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  clerk:    ['trucks','drivers','trips','dispatch','publicbookings','shutout','interchange'],
+  dispatch: ['trucks','drivers','trips','dispatch','publicbookings','shutout','interchange','fuel'],
+  ops:      ['trucks','drivers','trips','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  finance:  ['trips','shippinglines'],
+  viewer:   ['trucks','drivers','trips'],
+};
+const ROLE_ADMINRAIL = {
+  admin:    ['invoicing','allocation','workanalysis','reports','livetracking','usermgmt','settings'],
+  clerk:    ['allocation'],
+  dispatch: ['allocation'],
+  finance:  ['invoicing','workanalysis','reports'],
+  ops:      ['workanalysis','reports'],
+  viewer:   [],
+};
+function allowedSidebarSections() { return isAdmin() ? ROLE_SIDEBAR.admin : (ROLE_SIDEBAR[currentRole()] || []); }
+function allowedAdminRailSections() { return isAdmin() ? ROLE_ADMINRAIL.admin : (ROLE_ADMINRAIL[currentRole()] || []); }
+function canSeeSection(sec) { return isAdmin() || allowedSidebarSections().includes(sec); }
+function canSeeAdminSection(sec) { return isAdmin() || allowedAdminRailSections().includes(sec); }
+
+// Hides/shows sidebar + admin-rail nav buttons according to the current
+// user's role. Called once after login (bootShell) — never touched again
+// during the session since role doesn't change without re-login.
+function applyRoleUI() {
+  if (isAdmin()) {
+    document.querySelectorAll('.nav-item[data-section]').forEach(n=>n.style.display='');
+    document.querySelectorAll('.admin-nav-item').forEach(n=>n.style.display='');
+    return;
+  }
+  const sidebarAllowed = allowedSidebarSections();
+  document.querySelectorAll('.nav-item[data-section]').forEach(n=>{
+    const sec = n.getAttribute('data-section');
+    n.style.display = sidebarAllowed.includes(sec) ? '' : 'none';
+  });
+  // Dashboard is admin-only, full stop.
+  const dashBtn=document.querySelector('.nav-item[data-section="dashboard"]');
+  if (dashBtn) dashBtn.style.display='none';
+
+  const railAllowed = allowedAdminRailSections();
+  ['invoicing','allocation','workanalysis','reports','livetracking','usermgmt','settings'].forEach(sec=>{
+    const btn=document.getElementById(`adminBtn-${sec}`);
+    if (btn) btn.style.display = railAllowed.includes(sec) ? '' : 'none';
+  });
+  document.querySelectorAll('.admin-nav-group').forEach(grp=>{
+    const visibleBtns = [...grp.querySelectorAll('.admin-nav-item')].some(b=>b.style.display!=='none');
+    grp.style.display = visibleBtns ? '' : 'none';
+  });
+  const muItem = document.querySelector('.user-menu-item[onclick*="usermgmt"]');
+  if (muItem) muItem.style.display = railAllowed.includes('usermgmt') ? '' : 'none';
+
+  // Inside Allocation, requisition/workshop approvals and the manual
+  // status override are admin-only even for roles (clerk, dispatch) that
+  // can otherwise open the Allocation section for truck/driver/container
+  // assignment.
+  ['allocTabBtn-requisitions','allocTabBtn-workshop'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  const statusOverride = document.getElementById('adminStatusOverridePanel');
+  if (statusOverride) statusOverride.style.display='none';
+}
+
+// Picks the first section a role is actually allowed to land on. Admin
+// always lands on the dashboard; everyone else skips straight to the
+// first item in their allowed sidebar list.
+function defaultSectionForRole() {
+  if (isAdmin()) return 'dashboard';
+  const allowed = allowedSidebarSections();
+  return allowed[0] || 'trips';
+}
 // The logged-in driver's own row in `drivers`, matched via drivers.profile_id
 // (added alongside the driver auth/role migration). Returns null until an
 // admin links the driver record to that person's login.
@@ -848,9 +930,11 @@ function bootShell() {
   document.getElementById('shell').style.display='flex';
   updateUserChip();
   startClock();
+  applyRoleUI();
   buildBadges();
   buildAlerts();
-  showSection('dashboard', document.querySelector('.nav-item[data-section="dashboard"]'));
+  const landing = defaultSectionForRole();
+  showSection(landing, document.querySelector(`.nav-item[data-section="${landing}"]`));
   populateSelects();
   startIdleTimer();
   startLivePulse();
@@ -871,7 +955,7 @@ function updateUserChip() {
   if(mh) mh.innerHTML= `<div class="user-menu-header-name">${p.name}</div><div class="user-menu-header-role">${roleLabel(p.role)}</div>`;
 }
 
-function roleLabel(r) { const m={ admin:'System Administrator', ops:'Operations Officer', finance:'Finance Manager', dispatch:'Dispatch Controller', viewer:'Read-Only Viewer', driver:'Driver' }; return m[r]||r; }
+function roleLabel(r) { const m={ admin:'System Administrator', ops:'Operations Officer', finance:'Finance Manager', dispatch:'Dispatch Controller', clerk:'Clerk', viewer:'Read-Only Viewer', driver:'Driver' }; return m[r]||r; }
 
 function startClock() {
   const update=()=>{
@@ -903,7 +987,14 @@ function buildBadges() {
 function buildAlerts() {
   const db=state.db;
   const alerts=[];
-  db.maintenance.filter(m=>m.status==='open' && m.priority==='critical').forEach(m=>{
+  // Highest priority: breakdowns reported directly by a driver from the
+  // field (via the Driver Portal). These jump the queue ahead of every
+  // other alert type because a stranded driver/truck needs the fastest
+  // possible dispatch response.
+  db.maintenance.filter(m=>m.status==='open' && m.priority==='critical' && m.reportedByDriver).forEach(m=>{
+    alerts.push({ type:'driver_breakdown', msg: `🚨 DRIVER BREAKDOWN REPORT — ${truckName(m.truckId)}: ${m.desc.slice(0,60)}…` });
+  });
+  db.maintenance.filter(m=>m.status==='open' && m.priority==='critical' && !m.reportedByDriver).forEach(m=>{
     alerts.push({ type:'crit', msg: `Critical breakdown — ${truckName(m.truckId)}: ${m.desc.slice(0,60)}…` });
   });
   db.trucks.filter(t=>t.fuelPct <20).forEach(t=>{
@@ -916,11 +1007,16 @@ function buildAlerts() {
     const days=Math.round((new Date(d.licenceExp)-Date.now())/86400000);
     alerts.push({ type:'warn', msg: `Licence expiry — ${d.name}: ${days} days remaining` });
   });
-  
+
+  // Sort so driver-reported breakdowns always float to the very top,
+  // followed by other critical issues, then general warnings.
+  const priorityOrder = { driver_breakdown:0, crit:1, warn:2 };
+  alerts.sort((a,b)=>(priorityOrder[a.type]??9)-(priorityOrder[b.type]??9));
+
   const list=document.getElementById('alertsList');
   if(list){
     list.innerHTML=alerts.length
-      ? alerts.map(a=>`<div class="alert-item ${a.type}"><div class="alert-dot-sm" style="background:${a.type==='crit'?'var(--red)':'var(--amber)'}"></div><span>${a.msg}</span></div>`).join('')
+      ? alerts.map(a=>`<div class="alert-item ${a.type==='driver_breakdown'?'crit':a.type}">${a.type==='driver_breakdown'?'<div class="alert-dot-sm" style="background:var(--red)"></div>':`<div class="alert-dot-sm" style="background:${a.type==='crit'?'var(--red)':'var(--amber)'}"></div>`}<span>${a.msg}</span></div>`).join('')
       : '<div style="padding:16px;text-align:center;color:var(--text-3);font-size:12px">No active alerts</div>';
   }
   const dot=document.getElementById('alertDot');
@@ -952,6 +1048,7 @@ const SECTION_META = {
 };
 
 function showSection(sec, btn) {
+  if (!canSeeSection(sec)) { toast('You don\'t have access to this section', 'error'); return; }
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   const el=document.getElementById(`sec-${sec}`);
@@ -969,6 +1066,7 @@ function showSection(sec, btn) {
 }
 
 function showAdminSection(sec, btn) {
+  if (!canSeeAdminSection(sec)) { toast('You don\'t have access to this section', 'error'); return; }
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.admin-nav-item').forEach(n=>n.classList.remove('active'));
   const el=document.getElementById(`sec-${sec}`);
@@ -1091,10 +1189,11 @@ function showTruckDetail(id) {
   if (!t) return;
   const trips = state.db.trips.filter(tr=>tr.truckId===id).slice(-5);
   const maint = state.db.maintenance.filter(m=>m.truckId===id);
-  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`: ''}`);
+  openModal(`Truck — ${t.reg}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Registration</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${t.reg}</div></div><div class="fg" style="margin:0"><label>Status</label><div style="padding:6px 0">${sbadge(t.status)}</div></div><div class="fg" style="margin:0"><label>Make / Model</label><div style="font-size:12px;color:var(--text)">${t.make}</div></div><div class="fg" style="margin:0"><label>Year</label><div style="font-size:12px;color:var(--text)">${t.year}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.type}</div></div><div class="fg" style="margin:0"><label>Colour</label><div style="font-size:12px;color:var(--text)">${t.colour}</div></div><div class="fg" style="margin:0"><label>Odometer</label><div style="font-size:12px;color:var(--text)">${fmt(t.mileage)} km</div></div><div class="fg" style="margin:0"><label>Fuel</label><div><div style="font-size:12px;color:${fuelColour(t.fuelPct)};font-weight:700">${t.fuelPct}%</div><div class="fuel-bar" style="margin-top:4px"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Assigned Driver</label><div style="font-size:12px;color:var(--text)">${t.driver ? driverName(t.driver) : 'Unassigned'}</div></div></div><div style="margin-bottom:10px"><div class="fg" style="margin:0"><label>Last Service</label><div style="font-size:12px;color:var(--text)">${fmtDate(t.lastService)}</div></div></div><div style="margin-bottom:14px"><div class="fg" style="margin:0"><label>Next Service Due</label><div style="font-size:12px;color:${new Date(t.nextService) < Date.now()?'var(--red)':'var(--text)'}">${fmtDate(t.nextService)}</div></div></div>${t.notes?`<div class="ops-notice" style="margin-bottom:14px">${t.notes}</div>`:''}<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:6px">Recent Trips (${trips.length})</div>${trips.length ? trips.map(tr=>`<div class="activity-row"><div style="flex:1;font-size:11px;color:var(--text-2)">${tr.origin} → ${tr.dest} · ${tr.container}</div>${sbadge(tr.status)}<div class="act-time">${fmtDate(tr.startTime)}</div></div>`).join('') : '<div style="color:var(--text-3);font-size:11px;padding:8px 0">No trips recorded</div>'}${isAdmin() ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','maintenance','breakdown','off_duty'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTruckStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="action-btn ghost" onclick="triggerImageUpload('trucks','${id}','img',()=>showTruckDetail('${id}'))">📷 Upload Truck Photo</button></div>${adminDeleteBtn('trucks', id)}</div>`: ''}`);
 }
 
 function quickSetTruckStatus(id, status) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const t = state.db.trucks.find(t=>t.id===id);
   if (!t) return;
   t.status = status;
@@ -1158,10 +1257,11 @@ function showDriverDetail(id) {
   if (!d) return;
   const licDays = Math.round((new Date(d.licenceExp)-Date.now())/86400000);
   const licWarn = licDays < 90;
-  openModal(`Driver — ${d.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div style="width:52px;height:52px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--gold)">${initials(d.name)}</div><div><div style="font-size:16px;font-weight:700;color:var(--text)">${d.name}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">${d.id}</div></div><div style="margin-left:auto">${sbadge(d.status)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Phone</label><div class="mono" style="font-size:12px;color:var(--text)">${d.phone}</div></div><div class="fg" style="margin:0"><label>Licence</label><div class="mono" style="font-size:12px;color:var(--text)">${d.licence}</div></div><div class="fg" style="margin:0"><label>Licence Expiry</label><div style="font-size:12px;color:${licWarn?'var(--amber)':'var(--text)'};font-weight:${licWarn?'700':'400'}">${fmtDate(d.licenceExp)}${licWarn?' ⚠':''}</div></div><div class="fg" style="margin:0"><label>Trips Today</label><div class="mono" style="font-size:16px;color:var(--gold);font-weight:700">${d.tripsToday}</div></div><div class="fg" style="margin:0"><label>Assigned Truck</label><div style="font-size:12px;color:var(--text)">${d.truckId?truckName(d.truckId):'Not assigned'}</div></div><div class="fg" style="margin:0"><label>Current Load</label><div class="mono" style="font-size:11px;color:var(--text)">${d.load||'None'}</div></div><div class="fg" style="margin:0"><label>Location</label><div style="font-size:12px;color:var(--text)">${d.location}</div></div><div class="fg" style="margin:0"><label>Rating</label><div style="font-size:12px;color:var(--gold)">⭐ ${d.rating||0}/5.0</div></div><div class="fg" style="margin:0"><label>ID No.</label><div class="mono" style="font-size:12px;color:var(--text)">${d.idNo||'—'}</div></div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','off_duty','suspended'].map(s=>`<button class="filter-btn${d.status===s?' active':''}" onclick="quickSetDriverStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:14px"><label style="font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;font-family:var(--font-mono)">Linked Login (Driver Portal Access)</label><select onchange="linkDriverProfile('${id}', this.value)" style="width:100%;margin-top:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px;border-radius:5px;font-size:12px"><option value="">— Not linked —</option>${state.db.profiles.filter(p=>p.role==='driver').map(p=>`<option value="${p.id}" ${d.profileId===p.id?'selected':''}>${p.name} (${p.username})</option>`).join('')}</select></div></div>`:''}`);
+  openModal(`Driver — ${d.name}`, `<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)"><div style="width:52px;height:52px;border-radius:50%;background:var(--gold-dim);border:1px solid var(--gold-border);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--gold)">${initials(d.name)}</div><div><div style="font-size:16px;font-weight:700;color:var(--text)">${d.name}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">${d.id}</div></div><div style="margin-left:auto">${sbadge(d.status)}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Phone</label><div class="mono" style="font-size:12px;color:var(--text)">${d.phone}</div></div><div class="fg" style="margin:0"><label>Licence</label><div class="mono" style="font-size:12px;color:var(--text)">${d.licence}</div></div><div class="fg" style="margin:0"><label>Licence Expiry</label><div style="font-size:12px;color:${licWarn?'var(--amber)':'var(--text)'};font-weight:${licWarn?'700':'400'}">${fmtDate(d.licenceExp)}${licWarn?' ⚠':''}</div></div><div class="fg" style="margin:0"><label>Trips Today</label><div class="mono" style="font-size:16px;color:var(--gold);font-weight:700">${d.tripsToday}</div></div><div class="fg" style="margin:0"><label>Assigned Truck</label><div style="font-size:12px;color:var(--text)">${d.truckId?truckName(d.truckId):'Not assigned'}</div></div><div class="fg" style="margin:0"><label>Current Load</label><div class="mono" style="font-size:11px;color:var(--text)">${d.load||'None'}</div></div><div class="fg" style="margin:0"><label>Location</label><div style="font-size:12px;color:var(--text)">${d.location}</div></div><div class="fg" style="margin:0"><label>Rating</label><div style="font-size:12px;color:var(--gold)">⭐ ${d.rating||0}/5.0</div></div><div class="fg" style="margin:0"><label>ID No.</label><div class="mono" style="font-size:12px;color:var(--text)">${d.idNo||'—'}</div></div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Admin — Status Override</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['available','on_trip','off_duty','suspended'].map(s=>`<button class="filter-btn${d.status===s?' active':''}" onclick="quickSetDriverStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div><div style="margin-top:14px"><label style="font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;font-family:var(--font-mono)">Linked Login (Driver Portal Access)</label><select onchange="linkDriverProfile('${id}', this.value)" style="width:100%;margin-top:6px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);padding:7px;border-radius:5px;font-size:12px"><option value="">— Not linked —</option>${state.db.profiles.filter(p=>p.role==='driver').map(p=>`<option value="${p.id}" ${d.profileId===p.id?'selected':''}>${p.name} (${p.username})</option>`).join('')}</select></div>${adminDeleteBtn('drivers', id)}</div>`:''}`);
 }
 
 function quickSetDriverStatus(id, status) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const d = state.db.drivers.find(d=>d.id===id);
   if (!d) return;
   d.status = status;
@@ -1230,9 +1330,7 @@ function filterTrips(f,btn){ _tripFilter=f; document.querySelectorAll('#sec-trip
 
 function renderTrips(f){
   let trips=state.db.trips;
-  if(f==='active')    trips=trips.filter(t=>t.status==='active');
-  else if(f==='completed') trips=trips.filter(t=>t.status==='completed');
-  else if(f==='delayed')   trips=trips.filter(t=>t.status==='delayed');
+  if(f!=='all') trips=trips.filter(t=>t.status===f);
   const el=document.getElementById('tripsList');
   if(!el) return;
   el.innerHTML=trips.map(t=>`<div class="trip-card status-${t.status}" onclick="showTripDetail('${t.id}')"><div class="trip-card-head"><div class="trip-route">${t.origin}<span class="arrow">→</span>${t.dest}</div>${sbadge(t.status)}</div><div class="trip-meta"><span>🚛 ${truckName(t.truckId)}</span><span>👤 ${driverName(t.driverId)}</span><span class="mono" style="font-size:10.5px;color:var(--gold)">${t.container}</span><span>${t.ctype} · ${t.workType}</span><span>🕐 Started ${timeAgo(t.startTime)} · ETA ${fmtTime(t.eta)}</span><span>${t.distance}km · ${sbadge(t.priority.toLowerCase())}</span></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🗺️</div><div class="empty-state-label">No trips in this filter</div></div>';
@@ -1242,7 +1340,7 @@ function showTripDetail(id) {
   const t = state.db.trips.find(t=>t.id===id);
   if (!t) return;
   const line = state.db.shippingLines.find(l=>l.id===t.shippingLine);
-  openModal(`Trip — ${t.container}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['active','loaded','on_trip','offloaded','breakdown','delayed','completed'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`:''}`);
+  openModal(`Trip — ${t.container}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['active','loaded','on_trip','offloaded','breakdown','delayed','completed'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div>${adminDeleteBtn('trips', id)}</div>`:''}`);
 }
 
 // Shared core: applies a trip status change, cascading truck/driver status
@@ -1254,6 +1352,21 @@ function applyTripStatus(t, status, actorLabel) {
   if (status === 'breakdown') {
     const truck = state.db.trucks.find(tr=>tr.id===t.truckId);
     if (truck) truck.status = 'breakdown';
+    // Open (or reuse) a critical maintenance ticket so the breakdown shows
+    // up in Maintenance + the alerts feed. Reports coming from a driver in
+    // the field are flagged so buildAlerts() can push them to the top.
+    const existing = state.db.maintenance.find(m=>m.truckId===t.truckId && m.status!=='resolved' && m.type==='Breakdown');
+    if (existing) {
+      existing.reportedByDriver = existing.reportedByDriver || isDriver();
+    } else {
+      state.db.maintenance.push({
+        id: uid('MNT'), truckId: t.truckId, type:'Breakdown',
+        desc: `Breakdown reported on trip ${t.container} (${t.origin} → ${t.dest}).`,
+        priority:'critical', status:'open', date:new Date().toISOString(),
+        cost:0, tech:'', resolvedDate:null, reportedByDriver: isDriver(),
+      });
+    }
+    buildAlerts();
   }
   if (status === 'completed') {
     const truck = state.db.trucks.find(tr=>tr.id===t.truckId);
@@ -1285,6 +1398,7 @@ function quickSetTripStatus(id, status) {
    is gated to trips actually assigned to that driver.
 ────────────────────────────────────────────────────────────────── */
 const DRIVER_TRIP_STEPS = ['loaded','on_trip','offloaded','breakdown','completed'];
+let _dpTab = 'trip';
 
 function renderDriverPortal() {
   const p = state.profile;
@@ -1301,16 +1415,46 @@ function renderDriverPortal() {
     return;
   }
 
+  body.innerHTML = `
+    <div class="filter-row" style="margin-bottom:14px;flex-wrap:wrap">
+      <button class="filter-btn${_dpTab==='trip'?' active':''}" onclick="dpSwitchTab('trip')">My Trip</button>
+      <button class="filter-btn${_dpTab==='fuel'?' active':''}" onclick="dpSwitchTab('fuel')">Fuel Log</button>
+      <button class="filter-btn${_dpTab==='requisitions'?' active':''}" onclick="dpSwitchTab('requisitions')">Requisitions</button>
+      <button class="filter-btn${_dpTab==='workshop'?' active':''}" onclick="dpSwitchTab('workshop')">Workshop</button>
+      <button class="filter-btn${_dpTab==='shutouts'?' active':''}" onclick="dpSwitchTab('shutouts')">Shutouts</button>
+    </div>
+    <div id="dp_tabBody"></div>
+  `;
+  dpRenderTab(driver);
+}
+
+function dpSwitchTab(tab) { _dpTab = tab; renderDriverPortal(); }
+
+function dpRenderTab(driver) {
+  const el = document.getElementById('dp_tabBody');
+  if (!el) return;
+  if (_dpTab === 'trip')          return dpRenderTripTab(el, driver);
+  if (_dpTab === 'fuel')          return dpRenderFuelTab(el, driver);
+  if (_dpTab === 'requisitions')  return dpRenderReqTab(el, driver);
+  if (_dpTab === 'workshop')      return dpRenderWorkshopTab(el, driver);
+  if (_dpTab === 'shutouts')      return dpRenderShutoutTab(el, driver);
+}
+
+/* ── My Trip tab ────────────────────────────────────────────────── */
+function dpRenderTripTab(el, driver) {
   const truck = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
   const myTrips = state.db.trips
     .filter(t=>t.driverId===driver.id && t.status!=='completed')
     .sort((a,b)=>new Date(b.startTime)-new Date(a.startTime));
   const active = myTrips[0];
 
-  body.innerHTML = `
+  el.innerHTML = `
     <div class="panel" style="margin-bottom:14px">
       <div class="panel-head"><span class="panel-title">My Truck</span>${truck?sbadge(truck.status):''}</div>
-      <div style="padding:14px;font-size:13px;color:var(--text)">${truck ? `${truck.reg} — ${truck.make}` : 'No truck currently assigned'}</div>
+      <div style="padding:14px;font-size:13px;color:var(--text);display:flex;justify-content:space-between;align-items:center">
+        <span>${truck ? `${truck.reg} — ${truck.make}` : 'No truck currently assigned'}</span>
+        ${truck?`<button class="action-btn danger" style="flex-shrink:0" onclick="driverReportBreakdown('${truck.id}')">⚠ Report Breakdown</button>`:''}
+      </div>
     </div>
     <div class="panel">
       <div class="panel-head"><span class="panel-title">My Active Trip</span></div>
@@ -1338,7 +1482,216 @@ function driverAdvanceTrip(tripId, status) {
   if (!driver || !t || t.driverId !== driver.id) { toast('Not authorized for this trip', 'error'); return; }
   if (!DRIVER_TRIP_STEPS.includes(status)) { toast('Invalid status', 'error'); return; }
   applyTripStatus(t, status, state.profile.username);
-  toast(`Trip updated to ${status.replace('_',' ')}`, 'success');
+  toast(status==='breakdown' ? 'Breakdown reported — dispatch notified' : `Trip updated to ${status.replace('_',' ')}`, status==='breakdown'?'error':'success');
+  renderDriverPortal();
+}
+
+// Standalone breakdown report — not tied to an active trip. Opens a critical
+// maintenance ticket immediately and flags it so it jumps to the top of the
+// admin alerts feed (see buildAlerts()).
+function driverReportBreakdown(truckId) {
+  openModal('Report Breakdown', `
+    <div class="ops-notice" style="margin-bottom:12px">This will immediately flag your truck as broken down and alert dispatch/admin as a priority.</div>
+    <div class="fg"><label>What's wrong?</label><textarea id="bd_desc" rows="3" placeholder="Describe the breakdown…"></textarea></div>
+    <div class="fg"><label>Location</label><input id="bd_loc" placeholder="e.g. B8 Highway, near Miritini"/></div>
+    <button class="submit-btn" onclick="submitDriverBreakdown('${truckId}')">🚨 Submit Breakdown Report →</button>
+  `);
+}
+
+function submitDriverBreakdown(truckId) {
+  const desc = document.getElementById('bd_desc').value.trim();
+  if (!desc) { toast('Please describe the issue', 'error'); return; }
+  const loc = sanitize(document.getElementById('bd_loc').value.trim());
+  const truck = state.db.trucks.find(t=>t.id===truckId);
+  if (truck) truck.status = 'breakdown';
+  state.db.maintenance.push({
+    id: uid('MNT'), truckId, type:'Breakdown',
+    desc: loc ? `${desc} (Location: ${loc})` : desc,
+    priority:'critical', status:'open', date:new Date().toISOString(),
+    cost:0, tech:'', resolvedDate:null, reportedByDriver:true,
+  });
+  scheduleSave(); buildBadges(); buildAlerts();
+  addAudit(state.profile.username, 'Driver Breakdown Report', `${truckName(truckId)} — ${desc.slice(0,60)}`);
+  closeModal();
+  toast('Breakdown reported — dispatch notified', 'error');
+  renderDriverPortal();
+}
+
+/* ── Fuel Log tab ───────────────────────────────────────────────── */
+function dpRenderFuelTab(el, driver) {
+  const logs = state.db.fuel.filter(f=>f.driverId===driver.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  el.innerHTML = `
+    <div class="form-card" style="margin-bottom:14px">
+      <div class="form-card-head">Log Fuel Fill-up</div>
+      <div class="form-card-body">
+        <div class="form-row-2">
+          <div class="fg"><label>Litres</label><input id="dp_f_litres" type="number" placeholder="180"/></div>
+          <div class="fg"><label>Price / Litre (KSh)</label><input id="dp_f_price" type="number" placeholder="155"/></div>
+        </div>
+        <div class="form-row-2">
+          <div class="fg"><label>Station</label><input id="dp_f_station" placeholder="Kobil Shimanzi"/></div>
+          <div class="fg"><label>Odometer (km)</label><input id="dp_f_odo" type="number" placeholder="142300"/></div>
+        </div>
+        <div class="fg"><label>Receipt No. <span class="label-optional">(optional)</span></label><input id="dp_f_receipt" placeholder="RCP-000"/></div>
+        <button class="submit-btn" onclick="dpAddFuelLog()">Save Fuel Log →</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">My Fuel History</span><span class="panel-meta">${logs.length} entries</span></div>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Date</th><th>Litres</th><th>Price/L</th><th>Total</th><th>Station</th></tr></thead>
+        <tbody>${logs.map(f=>`<tr><td class="mono" style="font-size:10px">${fmtDate(f.date)}</td><td class="mono">${fmt(f.litres)} L</td><td class="mono">${fmt(f.pricePerLitre)}</td><td class="mono" style="color:var(--gold);font-weight:700">${fmtKsh(f.litres*f.pricePerLitre)}</td><td style="font-size:11px;color:var(--text-3)">${f.station}</td></tr>`).join('')||`<tr><td colspan="5" class="empty-td">No fuel logs yet</td></tr>`}</tbody>
+      </table></div>
+    </div>
+  `;
+}
+
+function dpAddFuelLog() {
+  const driver = myDriverRecord();
+  if (!driver) return;
+  const litres = parseFloat(document.getElementById('dp_f_litres').value)||0;
+  const price  = parseFloat(document.getElementById('dp_f_price').value)||0;
+  if (litres<=0 || price<=0) { toast('Litres and price are required', 'error'); return; }
+  if (litres > 1000) { toast('Litres exceed reasonable limit (1000L)', 'error'); return; }
+  const log = {
+    id: uid('FUEL'), truckId: driver.truckId||null, driverId: driver.id,
+    date: new Date().toISOString(), litres, pricePerLitre: price,
+    station: sanitize(document.getElementById('dp_f_station').value.trim())||'Unknown',
+    odometer: Math.max(0, parseInt(document.getElementById('dp_f_odo').value)||0),
+    receipt: document.getElementById('dp_f_receipt').value.trim()||uid('RCP'),
+  };
+  state.db.fuel.push(log);
+  const t = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
+  if (t) { t.fuelPct = Math.min(100, Math.round((litres/400)*100 + t.fuelPct)); t.mileage = log.odometer||t.mileage; }
+  scheduleSave();
+  addAudit(state.profile.username, 'Fuel Log (Driver)', `${truckName(driver.truckId)} — ${litres}L at KSh ${price}/L`);
+  toast(`Fuel log saved — ${fmtKsh(litres*price)}`, 'success');
+  renderDriverPortal();
+}
+
+/* ── Requisitions tab ───────────────────────────────────────────── */
+function dpRenderReqTab(el, driver) {
+  const mine = state.db.requisitions.filter(r=>r.requesterId===state.profile.id || r.requester===state.profile.name || r.requester===driver.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  el.innerHTML = `
+    <div class="form-card" style="margin-bottom:14px">
+      <div class="form-card-head">New Requisition</div>
+      <div class="form-card-body">
+        <div class="form-row-2">
+          <div class="fg"><label>Category</label><select id="dp_rq_cat"><option>Fuel Advance</option><option>Tyre Parts</option><option>Tool Purchase</option><option>Medical</option><option>Lubricants</option><option>Other</option></select></div>
+          <div class="fg"><label>Amount (KSh)</label><input id="dp_rq_amt" type="number" placeholder="0"/></div>
+        </div>
+        <div class="fg"><label>Items / Description</label><textarea id="dp_rq_items" rows="3" placeholder="List what is needed…"></textarea></div>
+        <div class="fg"><label>Notes</label><input id="dp_rq_notes" placeholder="Additional context…"/></div>
+        <button class="submit-btn" onclick="dpSaveRequisition()">Submit Requisition →</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">My Requisitions</span><span class="panel-meta">${mine.length}</span></div>
+      <div>${mine.map(r=>`<div class="req-card"><div class="req-card-head"><div><div style="font-size:12.5px;font-weight:700;color:var(--text)">${r.category}</div><div class="req-meta">${r.id} · ${fmtDate(r.date)}</div></div><div style="text-align:right">${sbadge(r.status)}<div class="req-amount" style="margin-top:4px">${fmtKsh(r.amount)}</div></div></div><div class="req-items">${r.items}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No requisitions submitted yet</div></div>'}</div>
+    </div>
+  `;
+}
+
+function dpSaveRequisition() {
+  const items = document.getElementById('dp_rq_items').value.trim();
+  const amt   = Math.max(0, parseInt(document.getElementById('dp_rq_amt').value)||0);
+  if (!items||!amt) { toast('Items and amount required','error'); return; }
+  if (!state.profile?.id) { toast('Session error — please log in again', 'error'); return; }
+  state.db.requisitions.push({
+    id: uid('REQ'), requester: state.profile.name, requesterId: state.profile.id,
+    category: document.getElementById('dp_rq_cat').value,
+    items, amount: amt,
+    notes: sanitize(document.getElementById('dp_rq_notes').value.trim()),
+    date: new Date().toISOString(), status:'pending',
+    approver:null, approvedDate:null,
+  });
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Requisition Submitted (Driver)', `${items.slice(0,50)}…`);
+  toast('Requisition submitted — pending approval', 'success');
+  renderDriverPortal();
+}
+
+/* ── Workshop tab ───────────────────────────────────────────────── */
+function dpRenderWorkshopTab(el, driver) {
+  const truck = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
+  const mine = truck ? state.db.workshop.filter(w=>w.truckId===truck.id).sort((a,b)=>new Date(b.reported)-new Date(a.reported)) : [];
+  el.innerHTML = `
+    <div class="form-card" style="margin-bottom:14px">
+      <div class="form-card-head">Report Vehicle Issue</div>
+      <div class="form-card-body">
+        ${!truck ? '<div class="ops-notice">No truck currently assigned — an admin must assign one before you can log a workshop job.</div>' : `
+        <div class="fg"><label>Truck</label><div class="mono" style="padding:8px;background:var(--surface);border-radius:5px;color:var(--gold)">${truck.reg} — ${truck.make}</div></div>
+        <div class="fg"><label>Job Title</label><input id="dp_ws_title" placeholder="Describe the issue…"/></div>
+        <div class="fg"><label>Description</label><textarea id="dp_ws_desc" rows="3" placeholder="Detailed description…"></textarea></div>
+        <button class="submit-btn" onclick="dpSaveWorkshopJob('${truck.id}')">Submit Job Card →</button>
+        `}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">My Truck's Workshop Jobs</span><span class="panel-meta">${mine.length}</span></div>
+      <div>${mine.map(w=>`<div class="ws-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div style="font-size:12.5px;font-weight:700;color:var(--text)">${w.title}</div><div style="font-size:10.5px;color:var(--text-3);margin-top:2px">${w.id}</div></div>${sbadge(w.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${w.desc}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No workshop jobs for your truck</div></div>'}</div>
+    </div>
+  `;
+}
+
+function dpSaveWorkshopJob(truckId) {
+  const title = document.getElementById('dp_ws_title').value.trim();
+  if (!title) { toast('Job title required','error'); return; }
+  state.db.workshop.push({
+    id: uid('WS'), truckId,
+    title, desc: sanitize(document.getElementById('dp_ws_desc').value.trim()),
+    tech:'', parts:'', labour:0, total:0,
+    status:'reported', reported: new Date().toISOString(), diagnosed:null,
+  });
+  scheduleSave();
+  addAudit(state.profile.username, 'Workshop Job Reported (Driver)', title);
+  toast('Job card submitted to workshop', 'success');
+  renderDriverPortal();
+}
+
+/* ── Shutouts tab ───────────────────────────────────────────────── */
+function dpRenderShutoutTab(el, driver) {
+  const mine = state.db.shutouts.filter(s=>s.driverId===driver.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  el.innerHTML = `
+    <div class="form-card" style="margin-bottom:14px">
+      <div class="form-card-head">Report Shutout</div>
+      <div class="form-card-body">
+        <div class="fg"><label>Container No.</label><input id="dp_sh_cont" list="containerHistory" placeholder="MSCU0000000"/></div>
+        <div class="form-row-2">
+          <div class="fg"><label>Vessel</label><input id="dp_sh_vessel" placeholder="MSC VESSEL NAME"/></div>
+          <div class="fg"><label>Voyage No.</label><input id="dp_sh_voyage" placeholder="VA-001"/></div>
+        </div>
+        <div class="fg"><label>Shipping Line</label><select id="dp_sh_line">${state.db.shippingLines.map(l=>`<option value="${l.id}">${l.code}</option>`).join('')}</select></div>
+        <div class="fg"><label>Reason</label><input id="dp_sh_reason" placeholder="Why was this shutout?"/></div>
+        <div class="fg"><label>Notes</label><textarea id="dp_sh_notes" rows="2"></textarea></div>
+        <button class="submit-btn" onclick="dpSaveShutout('${driver.id}')">Flag Shutout →</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">My Shutout Reports</span><span class="panel-meta">${mine.length}</span></div>
+      <div>${mine.map(s=>`<div class="shutout-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div class="mono" style="font-size:13px;color:var(--gold)">${s.container}</div><div style="font-size:11px;color:var(--text-3);margin-top:2px">${s.vessel} · Voyage ${s.voyage}</div></div>${sbadge(s.status)}</div><div style="font-size:11.5px;color:var(--text-2)">Reason: ${s.reason}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No shutouts reported yet</div></div>'}</div>
+    </div>
+  `;
+}
+
+function dpSaveShutout(driverId) {
+  const cont = document.getElementById('dp_sh_cont').value.trim().toUpperCase();
+  if (!cont) { toast('Container number required', 'error'); return; }
+  if (!/^[A-Z0-9]{4,12}$/.test(cont)) { toast('Invalid container format', 'error'); return; }
+  const driver = state.db.drivers.find(d=>d.id===driverId);
+  state.db.shutouts.push({
+    id: uid('SHT'), container: cont,
+    line: document.getElementById('dp_sh_line').value,
+    vessel: sanitize(document.getElementById('dp_sh_vessel').value.trim()),
+    voyage: sanitize(document.getElementById('dp_sh_voyage').value.trim()),
+    reason: sanitize(document.getElementById('dp_sh_reason').value.trim()),
+    truckId: driver?.truckId||null, driverId,
+    notes: sanitize(document.getElementById('dp_sh_notes').value.trim()),
+    date: new Date().toISOString(), status:'open',
+  });
+  scheduleSave(); buildBadges();
+  addAudit(state.profile.username, 'Shutout Flagged (Driver)', cont);
+  toast('Shutout flagged', 'success');
   renderDriverPortal();
 }
 
@@ -1537,10 +1890,11 @@ function renderMaint(f){
 function showMaintDetail(id) {
   const m = state.db.maintenance.find(m=>m.id===id);
   if (!m) return;
-  openModal(`Maintenance — ${truckName(m.truckId)}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(m.truckId)}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${m.type}</div></div><div class="fg" style="margin:0"><label>Priority</label>${sbadge(m.priority)}</div><div class="fg" style="margin:0"><label>Status</label>${sbadge(m.status)}</div><div class="fg" style="margin:0"><label>Date</label><div style="font-size:12px;color:var(--text)">${fmtDate(m.date)}</div></div><div class="fg" style="margin:0"><label>Cost (KSh)</label><div style="font-size:12px;color:var(--gold);font-weight:700">${m.cost?fmt(m.cost):'TBC'}</div></div><div class="fg" style="margin:0"><label>Technician</label><div style="font-size:12px;color:var(--text)">${m.tech||'Unassigned'}</div></div>${m.resolvedDate?`<div class="fg" style="margin:0"><label>Resolved</label><div style="font-size:12px;color:var(--green)">${fmtDate(m.resolvedDate)}</div></div>`:''}</div><div class="fg" style="margin-bottom:14px"><label>Description</label><div style="font-size:12px;color:var(--text-2);line-height:1.6;padding:10px;background:var(--surface);border-radius:5px">${m.desc}</div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Update Status</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['open','in_progress','resolved'].map(s=>`<button class="filter-btn${m.status===s?' active':''}" onclick="updateMaintStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div></div>`:''}`);
+  openModal(`Maintenance — ${truckName(m.truckId)}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(m.truckId)}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${m.type}</div></div><div class="fg" style="margin:0"><label>Priority</label>${sbadge(m.priority)}</div><div class="fg" style="margin:0"><label>Status</label>${sbadge(m.status)}</div><div class="fg" style="margin:0"><label>Date</label><div style="font-size:12px;color:var(--text)">${fmtDate(m.date)}</div></div><div class="fg" style="margin:0"><label>Cost (KSh)</label><div style="font-size:12px;color:var(--gold);font-weight:700">${m.cost?fmt(m.cost):'TBC'}</div></div><div class="fg" style="margin:0"><label>Technician</label><div style="font-size:12px;color:var(--text)">${m.tech||'Unassigned'}</div></div>${m.resolvedDate?`<div class="fg" style="margin:0"><label>Resolved</label><div style="font-size:12px;color:var(--green)">${fmtDate(m.resolvedDate)}</div></div>`:''}</div><div class="fg" style="margin-bottom:14px"><label>Description</label><div style="font-size:12px;color:var(--text-2);line-height:1.6;padding:10px;background:var(--surface);border-radius:5px">${m.desc}</div></div>${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border)"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Update Status</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['open','in_progress','resolved'].map(s=>`<button class="filter-btn${m.status===s?' active':''}" onclick="updateMaintStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div>${adminDeleteBtn('maintenance', id)}</div>`:''}`);
 }
 
 function updateMaintStatus(id, status) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const m = state.db.maintenance.find(m=>m.id===id);
   if (!m) return;
   m.status = status;
@@ -1637,7 +1991,7 @@ function renderShutout(f){
   let items=f==='all'?state.db.shutouts:state.db.shutouts.filter(s=>s.status===f);
   const el=document.getElementById('shutoutList');
   if(!el) return;
-  el.innerHTML=items.map(s=>`<div class="shutout-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div class="mono" style="font-size:13px;color:var(--gold)">${s.container}</div><div style="font-size:11px;color:var(--text-3);margin-top:2px">${s.vessel} · Voyage ${s.voyage}</div></div>${sbadge(s.status)}</div><div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">Reason: ${s.reason}</div><div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9px;color:var(--text-3)"><span>${fmtDate(s.date)}</span><span>${truckName(s.truckId)}</span></div>${s.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:6px;font-style:italic">${s.notes}</div>`:''}</div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-label">No shutout records</div></div>';
+  el.innerHTML=items.map(s=>`<div class="shutout-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div><div class="mono" style="font-size:13px;color:var(--gold)">${s.container}</div><div style="font-size:11px;color:var(--text-3);margin-top:2px">${s.vessel} · Voyage ${s.voyage}</div></div>${sbadge(s.status)}</div><div style="font-size:11.5px;color:var(--text-2);margin-bottom:6px">Reason: ${s.reason}</div><div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:9px;color:var(--text-3)"><span>${fmtDate(s.date)}</span><span>${truckName(s.truckId)}</span></div>${s.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:6px;font-style:italic">${s.notes}</div>`:''}${isAdmin()?`<button class="modal-btn danger" style="margin-top:8px" onclick="confirmDeleteRecord('shutouts','${s.id}')">🗑 Delete</button>`:''}</div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-label">No shutout records</div></div>';
 }
 
 function showAddShutoutModal() {
@@ -1676,10 +2030,11 @@ function renderInterchange(f){
   let items=f==='all'?state.db.interchange:state.db.interchange.filter(i=>i.status===f);
   const el=document.getElementById('interchangeList');
   if(!el) return;
-  el.innerHTML=items.map(ic=>`<div class="ic-card"><div class="ic-card-img-placeholder"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${truckName(ic.truck)} · ${driverName(ic.driver)} · ${fmtDate(ic.date)}</div>${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div>${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" style="flex-shrink:0" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}</div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
+  el.innerHTML=items.map(ic=>`<div class="ic-card"><div class="ic-card-img-placeholder" style="cursor:pointer;position:relative;overflow:hidden" onclick="triggerImageUpload('interchange','${ic.id}','img',()=>renderInterchange('${f}'))" title="Upload container photo">${ic.img?`<img src="${ic.img}" style="width:100%;height:100%;object-fit:cover" />`:`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`}</div><div style="flex:1"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div class="mono" style="font-size:13px;color:var(--gold)">${ic.container}</div>${sbadge(ic.status)}</div><div style="font-size:11.5px;color:var(--text-2)">${ic.type} · ${lineName(ic.line)} · ${ic.condition}</div><div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:4px">${truckName(ic.truck)} · ${driverName(ic.driver)} · ${fmtDate(ic.date)}</div>${ic.notes?`<div style="font-size:10.5px;color:var(--text-3);margin-top:4px">${ic.notes}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">${isAdmin() && ic.status==='pending'?`<button class="modal-btn success" onclick="approveInterchange('${ic.id}')">Approve</button>`:''}${isAdmin()?`<button class="modal-btn danger" onclick="confirmDeleteRecord('interchange','${ic.id}')">🗑 Delete</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🔄</div><div class="empty-state-label">No interchange records</div></div>';
 }
 
 function approveInterchange(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const ic = state.db.interchange.find(i=>i.id===id);
   if (!ic) return;
   ic.status='approved';
@@ -1728,7 +2083,7 @@ function renderLines(f){
   }
   const grid=document.getElementById('linesGrid');
   if(!grid) return;
-  grid.innerHTML=lines.map(l=>`<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">KSh ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">KSh ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">KSh ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px">${sbadge(l.active?'active':'off_duty')}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
+  grid.innerHTML=lines.map(l=>`<div class="line-card"><div class="line-code-badge">${l.code}</div><div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">${l.name}</div><div style="font-size:11px;color:var(--text-3);margin-bottom:10px">${l.contact}</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"><div class="ts">KSh ${fmt(l.rate20)}<b>20ft Rate</b></div><div class="ts">KSh ${fmt(l.rate40)}<b>40ft Rate</b></div><div class="ts">KSh ${fmt(l.rateHC)}<b>HC Rate</b></div></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">${sbadge(l.active?'active':'off_duty')}${isAdmin()?`<button class="tbl-btn" style="color:var(--red)" onclick="confirmDeleteRecord('shippingLines','${l.id}')">🗑 Delete</button>`:''}</div></div>`).join('')||'<div class="empty-state"><div class="empty-state-label">No shipping lines</div></div>';
 }
 
 function showAddLineModal() {
@@ -1773,8 +2128,9 @@ function saveRequisition() {
   const items = document.getElementById('rq_items').value.trim();
   const amt   = Math.max(0, parseInt(document.getElementById('rq_amt').value)||0);
   if (!items||!amt) { toast('Items and amount required','error'); return; }
+  if (!state.profile?.id) { toast('Session error — please log in again', 'error'); return; }
   state.db.requisitions.push({
-    id: uid('REQ'), requester: state.profile.name,
+    id: uid('REQ'), requester: state.profile.name, requesterId: state.profile.id,
     category: document.getElementById('rq_cat').value,
     items, amount: amt,
     notes: sanitize(document.getElementById('rq_notes').value.trim()),
@@ -1972,6 +2328,7 @@ function requireFinanceReport(tab, btn) {
 ────────────────────────────────────────────────────────────────── */
 let _allocTab='auto';
 function switchAllocTab(tab, btn) {
+  if ((tab==='requisitions'||tab==='workshop') && !isAdmin()) { toast('Admin rights required', 'error'); return; }
   _allocTab=tab;
   ['allocTabAuto','allocTabManual','allocTabRequisitions','allocTabWorkshop'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
   const map={auto:'allocTabAuto',manual:'allocTabManual',requisitions:'allocTabRequisitions',workshop:'allocTabWorkshop'};
@@ -2015,6 +2372,7 @@ function renderStatusOverridePanel() {
 }
 
 function adminOverrideStatus(type, id, status) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   if(type==='truck'){ const t=state.db.trucks.find(t=>t.id===id); if(t){t.status=status; addAudit(state.profile.username,'Status Override', `${t.reg} → ${status}`);} }
   else { const d=state.db.drivers.find(d=>d.id===id); if(d){d.status=status; addAudit(state.profile.username,'Status Override', `${d.name} → ${status}`);} }
   scheduleSave(); buildBadges(); renderStatusOverridePanel(); toast(`Status updated to ${status}`,'success');
@@ -2096,6 +2454,7 @@ function renderAdminRequisitions() {
 }
 
 function reviewReq(id, status) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const r=state.db.requisitions.find(r=>r.id===id);
   if(!r) return;
   r.status=status; r.approver=state.profile.username; r.approvedDate=new Date().toISOString();
@@ -2113,6 +2472,7 @@ function renderAdminWorkshop() {
 }
 
 function advanceWorkshop(id, status) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const w=state.db.workshop.find(w=>w.id===id);
   if(!w) return;
   w.status=status;
@@ -2287,7 +2647,7 @@ async function toggleUserActive(id) {
 
 function showCreateUserModal() {
   if (!state.financeUnlocked) { openFinanceLock(()=>showCreateUserModal()); return; }
-  openModal('Create User', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="cu_name" placeholder="Jane Doe"/></div><div class="fg"><label>Username</label><input id="cu_user" placeholder="jane.doe"/></div></div><div class="fg"><label>Email</label><input id="cu_email" type="email" placeholder="jane@gargo.co.ke"/></div><div class="form-row-2"><div class="fg"><label>Role</label><select id="cu_role"><option value="ops">Operations Officer</option><option value="dispatch">Dispatch Controller</option><option value="finance">Finance Manager</option><option value="viewer">Read-Only Viewer</option><option value="driver">Driver</option><option value="admin">System Administrator</option></select></div></div><div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">User will receive an email invitation to set their password via Supabase Auth.</div><button class="submit-btn" onclick="saveUser()">Create User →</button>`);
+  openModal('Create User', `<div class="form-row-2"><div class="fg"><label>Full Name</label><input id="cu_name" placeholder="Jane Doe"/></div><div class="fg"><label>Username</label><input id="cu_user" placeholder="jane.doe"/></div></div><div class="fg"><label>Email</label><input id="cu_email" type="email" placeholder="jane@gargo.co.ke"/></div><div class="form-row-2"><div class="fg"><label>Role</label><select id="cu_role"><option value="ops">Operations Officer</option><option value="dispatch">Dispatch Controller</option><option value="clerk">Clerk</option><option value="finance">Finance Manager</option><option value="viewer">Read-Only Viewer</option><option value="driver">Driver</option><option value="admin">System Administrator</option></select></div></div><div style="font-size:11px;color:var(--text-3);padding:10px;background:var(--surface);border-radius:5px;margin-bottom:12px">User will receive an email invitation to set their password via Supabase Auth.</div><button class="submit-btn" onclick="saveUser()">Create User →</button>`);
 }
 
 async function saveUser() {
@@ -2503,8 +2863,75 @@ async function submitChangePassword() {
   }
 }
 /* ──────────────────────────────────────────────────────────────────
-   § 29  GENERAL MODAL
+   § 29b  ADMIN-ONLY DELETE (all tables)
+   Single generic path for destructive deletes. Every entity's detail
+   modal calls this the same way — only admins ever see the button,
+   and the function itself re-checks role so nothing can be deleted
+   by calling it directly from the console either.
 ────────────────────────────────────────────────────────────────── */
+const DELETE_TABLE_LABELS = {
+  trucks:'Truck', drivers:'Driver', trips:'Trip', maintenance:'Maintenance record',
+  fuel:'Fuel log', shutouts:'Shutout record', interchange:'Interchange record',
+  shippingLines:'Shipping line', requisitions:'Requisition', workshop:'Workshop job',
+  invoices:'Invoice',
+};
+
+function adminDeleteBtn(table, id) {
+  if (!isAdmin()) return '';
+  return `<button class="modal-btn danger" onclick="confirmDeleteRecord('${table}','${id}')" style="margin-top:10px">🗑 Delete ${DELETE_TABLE_LABELS[table]||'Record'}</button>`;
+}
+
+function confirmDeleteRecord(table, id) {
+  if (!isAdmin()) { toast('Admin rights required to delete records', 'error'); return; }
+  const label = DELETE_TABLE_LABELS[table] || 'record';
+  if (!confirm(`Delete this ${label.toLowerCase()}? This cannot be undone.`)) return;
+  const arr = state.db[table];
+  if (!Array.isArray(arr)) return;
+  const idx = arr.findIndex(r=>r.id===id);
+  if (idx===-1) { toast('Record not found', 'error'); return; }
+  arr.splice(idx,1);
+  scheduleSave();
+  addAudit(state.profile.username, 'Record Deleted', `${label} — ${id}`);
+  buildBadges();
+  closeModal();
+  toast(`${label} deleted`, 'success');
+  if (state.currentSection) renderSection(state.currentSection);
+  if (state.currentAdminSection) renderSection(state.currentAdminSection);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 29c  IMAGE UPLOAD (trucks + containers)
+   Lightweight client-side upload — reads the file as a base64 data
+   URL and stores it directly on the record (trucks.img / interchange.img).
+   Good enough for a demo/production-lite deployment; swap the
+   FileReader step for a Supabase Storage upload when wiring the
+   real backend and just keep the resulting URL in the same field.
+────────────────────────────────────────────────────────────────── */
+function triggerImageUpload(table, id, field, afterFn) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2*1024*1024) { toast('Image too large — max 2MB', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rec = state.db[table].find(r=>r.id===id);
+      if (!rec) return;
+      rec[field] = reader.result;
+      scheduleSave();
+      toast('Image uploaded', 'success');
+      if (state.currentSection) renderSection(state.currentSection);
+      if (state.currentAdminSection) renderSection(state.currentAdminSection);
+      if (typeof afterFn === 'function') afterFn();
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+
 function openModal(title, body) {
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalBody').innerHTML    = body;
