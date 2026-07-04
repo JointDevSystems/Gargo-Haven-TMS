@@ -532,7 +532,58 @@ function fuelColour(pct) { if(pct >60)return 'var(--green)'; if(pct >30)return '
 function isAdmin() { return state.profile?.role === 'admin'; }
 function isDriver() { return state.profile?.role === 'driver'; }
 function isClerk() { return state.profile?.role === 'clerk'; }
+function isDispatch() { return state.profile?.role === 'dispatch'; }
 function currentRole() { return state.profile?.role || 'viewer'; }
+
+/* ──────────────────────────────────────────────────────────────────
+   § DUPLICATE / VALIDATION HELPERS
+   Centralised so every place that touches a container number, a
+   truck registration, a driver, or a shipping-line code applies the
+   exact same rule. "Active" here means "not finished" — a trip that
+   has been completed no longer blocks its container number from
+   being reused on a fresh dispatch.
+────────────────────────────────────────────────────────────────── */
+const TERMINAL_TRIP_STATUSES = ['completed'];
+function isTripLive(t) { return !TERMINAL_TRIP_STATUSES.includes(t.status); }
+
+// Returns the live trip currently using this container number, if any.
+// excludeTripId lets a form check "is this container used by someone
+// ELSE" while editing the trip that already legitimately owns it.
+function findLiveTripByContainer(cont, excludeTripId) {
+  if (!cont) return null;
+  const c = cont.trim().toUpperCase();
+  return state.db.trips.find(t => t.id !== excludeTripId && isTripLive(t) && (t.container || '').toUpperCase() === c) || null;
+}
+
+// All container numbers that have ever passed through Dispatch (i.e.
+// exist as a trip record). This is the single source of truth for the
+// Allocation section's container dropdown — Allocation must only ever
+// offer containers that Dispatch already knows about, never free text.
+function dispatchedContainers() {
+  const set = new Set();
+  state.db.trips.forEach(t => { if (t.container) set.add(t.container.trim().toUpperCase()); });
+  return [...set].sort();
+}
+
+function isValidContainerFormat(cont) { return /^[A-Z0-9]{4,12}$/.test(cont); }
+
+function findTruckByReg(reg, excludeId) {
+  if (!reg) return null;
+  const r = reg.trim().toUpperCase();
+  return state.db.trucks.find(t => t.id !== excludeId && (t.reg || '').toUpperCase() === r) || null;
+}
+
+function findDriverByPhone(phone, excludeId) {
+  if (!phone) return null;
+  const p = phone.replace(/\s+/g, '');
+  return state.db.drivers.find(d => d.id !== excludeId && (d.phone || '').replace(/\s+/g, '') === p) || null;
+}
+
+function findLineByCode(code, excludeId) {
+  if (!code) return null;
+  const c = code.trim().toUpperCase();
+  return state.db.shippingLines.find(l => l.id !== excludeId && (l.code || '').toUpperCase() === c) || null;
+}
 
 /* ──────────────────────────────────────────────────────────────────
    § 3b  ROLE-BASED ACCESS CONTROL
@@ -1214,6 +1265,8 @@ function saveTruck() {
   const make  = document.getElementById('nt_make').value.trim();
   if (!reg || !make) { toast('Registration and make are required', 'error'); return; }
   if (!/^[A-Z0-9\s]{3,10}$/.test(reg)) { toast('Invalid registration format. Use letters and numbers only.', 'error'); return; }
+  const dupTruck = findTruckByReg(reg);
+  if (dupTruck) { toast(`${reg} is already registered in the fleet`, 'error'); return; }
   const t = {
     id: uid('TRK'), reg, make,
     type:    document.getElementById('nt_type').value,
@@ -1299,6 +1352,10 @@ function saveDriver() {
   if (!name) { toast('Full name is required', 'error'); return; }
   if (!validatePhone(phone)) { toast('Invalid phone number format', 'error'); return; }
   if (!lic) { toast('Licence number is required', 'error'); return; }
+  const dupPhone = findDriverByPhone(phone);
+  if (dupPhone) { toast(`A driver with phone ${phone} already exists (${dupPhone.name})`, 'error'); return; }
+  const dupLic = state.db.drivers.find(dr=>(dr.licence||'').toUpperCase()===lic);
+  if (dupLic) { toast(`Licence ${lic} is already registered to ${dupLic.name}`, 'error'); return; }
   const d = {
     id: uid('DRV'),
     name,
@@ -1340,13 +1397,59 @@ function showTripDetail(id) {
   const t = state.db.trips.find(t=>t.id===id);
   if (!t) return;
   const line = state.db.shippingLines.find(l=>l.id===t.shippingLine);
-  openModal(`Trip — ${t.container}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${isAdmin()?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update</div><div style="display:flex;gap:6px;flex-wrap:wrap">${['active','loaded','on_trip','offloaded','breakdown','delayed','completed'].map(s=>`<button class="filter-btn${t.status===s?' active':''}" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('')}</div>${adminDeleteBtn('trips', id)}</div>`:''}`);
+  openModal(`Trip — ${t.container}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
 }
 
-// Shared core: applies a trip status change, cascading truck/driver status
-// resets exactly as before. Used by both the admin quick-set control and
-// the driver-portal step buttons so behaviour never diverges between them.
+/* ──────────────────────────────────────────────────────────────────
+   § TRIP STATUS STATE MACHINE
+   A trip's lifecycle only ever moves forward:
+     active(0) → loaded(1) → on_trip(2) → offloaded(3) → completed(4)
+   'delayed' and 'breakdown' are flags raised while a trip is under
+   way, so they share on_trip's rank — they can be set at that point
+   in the journey, but can never be used to pull a trip backwards
+   once it has moved on. 'completed' is terminal: once a trip is
+   completed, no further status change of any kind is accepted
+   (e.g. a completed trip can never afterwards be marked breakdown).
+   This one table is the single source of truth for every place that
+   changes trip status — admin, clerk, dispatch and driver alike.
+────────────────────────────────────────────────────────────────── */
+const TRIP_STATUS_RANK = { active:0, loaded:1, on_trip:2, delayed:2, breakdown:2, offloaded:3, completed:4 };
+const TRIP_ALL_STATUSES = Object.keys(TRIP_STATUS_RANK);
+
+function canTransitionTripStatus(from, to) {
+  if (!(from in TRIP_STATUS_RANK) || !(to in TRIP_STATUS_RANK)) return false;
+  if (from === to) return false;                  // no redundant re-set
+  if (from === 'completed') return false;          // terminal — nothing changes after completion
+  return TRIP_STATUS_RANK[to] >= TRIP_STATUS_RANK[from];
+}
+
+// Every forward status still reachable from a trip's current status —
+// used to render only the buttons a user is actually allowed to press,
+// so the UI itself can never offer a backwards move.
+function nextTripStatuses(currentStatus) {
+  return TRIP_ALL_STATUSES.filter(s => canTransitionTripStatus(currentStatus, s));
+}
+
+// Who may touch this trip's status at all. Admin, clerk and dispatch
+// can update any trip. A driver may only update the trip currently
+// assigned to them — never someone else's.
+function canUpdateTripStatus(t) {
+  if (!t) return false;
+  if (isAdmin() || isClerk() || isDispatch()) return true;
+  if (isDriver()) { const d = myDriverRecord(); return !!d && t.driverId === d.id; }
+  return false;
+}
+
+// Shared core: validates permission + the forward-only rule, then
+// applies a trip status change, cascading truck/driver status resets
+// exactly as before. Used by every entry point (admin quick-set,
+// clerk/dispatch controls, and the driver-portal step buttons) so
+// behaviour never diverges between roles. Returns {ok:true, old} on
+// success, or {ok:false, reason} on rejection so the caller can show
+// an accurate message instead of silently doing nothing.
 function applyTripStatus(t, status, actorLabel) {
+  if (!canUpdateTripStatus(t)) return { ok:false, reason:'permission' };
+  if (!canTransitionTripStatus(t.status, status)) return { ok:false, reason:'transition', from:t.status };
   const old = t.status;
   t.status = status;
   if (status === 'breakdown') {
@@ -1378,17 +1481,29 @@ function applyTripStatus(t, status, actorLabel) {
   scheduleSave();
   buildBadges();
   addAudit(actorLabel, 'Trip Status Update', `${t.container} ${old} → ${status}`);
-  return old;
+  return { ok:true, old, status };
 }
 
+// Callable by admin, clerk and dispatch (and by a driver on their own
+// trip, though the driver portal normally uses driverAdvanceTrip
+// instead). Enforces the same forward-only rule for everyone — there
+// is no "admin override" path that can move a trip backwards.
 function quickSetTripStatus(id, status) {
-  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const t = state.db.trips.find(t=>t.id===id);
-  if (!t) return;
-  applyTripStatus(t, status, state.profile.username);
+  if (!t) { toast('Trip not found', 'error'); return; }
+  if (!canUpdateTripStatus(t)) { toast('You do not have permission to update this trip', 'error'); return; }
+  const res = applyTripStatus(t, status, state.profile.username);
+  if (!res.ok) {
+    if (res.reason === 'transition') {
+      toast(`Cannot change status from "${res.from.replace('_',' ')}" to "${status.replace('_',' ')}" — trips can only move forward`, 'error');
+    } else {
+      toast('You do not have permission to update this trip', 'error');
+    }
+    return;
+  }
   closeModal();
   if (document.getElementById('tripsList')) renderTrips(_tripFilter);
-  toast(`Trip updated to ${status}`, 'success');
+  toast(`Trip updated to ${status.replace('_',' ')}`, 'success');
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -1466,9 +1581,9 @@ function dpRenderTripTab(el, driver) {
             <div style="font-size:11px;color:var(--text-3);margin-top:4px">${active.workType} · ${active.ctype}</div>
             <div style="margin-top:8px">${sbadge(active.status)}</div>
           </div>
-          <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Update Trip Step</div>
+          <div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Update Trip Step (forward only)</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            ${DRIVER_TRIP_STEPS.map(s=>`<button class="filter-btn${active.status===s?' active':''}" onclick="driverAdvanceTrip('${active.id}','${s}')">${s.replace('_',' ')}</button>`).join('')}
+            ${nextTripStatuses(active.status).filter(s=>DRIVER_TRIP_STEPS.includes(s)).map(s=>`<button class="filter-btn" onclick="driverAdvanceTrip('${active.id}','${s}')">${s.replace('_',' ')}</button>`).join('') || '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}
           </div>
         ` : '<div class="empty-state"><div class="empty-state-label">No active trip assigned right now</div></div>'}
       </div>
@@ -1481,7 +1596,15 @@ function driverAdvanceTrip(tripId, status) {
   const t = state.db.trips.find(tr=>tr.id===tripId);
   if (!driver || !t || t.driverId !== driver.id) { toast('Not authorized for this trip', 'error'); return; }
   if (!DRIVER_TRIP_STEPS.includes(status)) { toast('Invalid status', 'error'); return; }
-  applyTripStatus(t, status, state.profile.username);
+  const res = applyTripStatus(t, status, state.profile.username);
+  if (!res.ok) {
+    if (res.reason === 'transition') {
+      toast(`Cannot change status from "${res.from.replace('_',' ')}" to "${status.replace('_',' ')}" — trips can only move forward`, 'error');
+    } else {
+      toast('Not authorized for this trip', 'error');
+    }
+    return;
+  }
   toast(status==='breakdown' ? 'Breakdown reported — dispatch notified' : `Trip updated to ${status.replace('_',' ')}`, status==='breakdown'?'error':'success');
   renderDriverPortal();
 }
@@ -1735,8 +1858,23 @@ function createDispatch() {
     toast('Fill in all required fields', 'error');
     return;
   }
-  if (!/^[A-Z0-9]{4,12}$/.test(cont)) {
+  if (!isValidContainerFormat(cont)) {
     toast('Invalid container number format. Use letters and numbers only.', 'error');
+    return;
+  }
+  const dupTrip = findLiveTripByContainer(cont);
+  if (dupTrip) {
+    toast(`${cont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}, status: ${dupTrip.status.replace('_',' ')}). Complete or resolve it before re-dispatching this container.`, 'error');
+    return;
+  }
+  const dupTruck = state.db.trucks.find(tr=>tr.id===truck);
+  if (dupTruck && dupTruck.status !== 'available') {
+    toast(`${dupTruck.reg} is no longer available (status: ${dupTruck.status.replace('_',' ')}). Refresh and pick another truck.`, 'error');
+    return;
+  }
+  const dupDriver = state.db.drivers.find(d=>d.id===driver);
+  if (dupDriver && dupDriver.status !== 'available') {
+    toast(`${dupDriver.name} is no longer available (status: ${dupDriver.status.replace('_',' ')}). Refresh and pick another driver.`, 'error');
     return;
   }
   const ctype    = document.getElementById('d_ctype').value;
@@ -1838,12 +1976,31 @@ function showBulkPreview(rows) {
 function processBulkDispatch() {
   const rows = JSON.parse(document.getElementById('bulkDispatchPreview').dataset.rows||'[]');
   let created = 0;
-  rows.forEach(r=>{
+  const skipped = [];
+  const seenInBatch = new Set(); // catches duplicate containers within the same file, not just against existing trips
+  const busyTrucks  = new Set(); // catches the same truck being used twice in one batch
+  const busyDrivers = new Set();
+
+  rows.forEach((r, idx)=>{
+    const rowLabel = r.container ? r.container : `row ${idx+1}`;
+    if (!r.container) { skipped.push(`${rowLabel}: missing container number`); return; }
+    const cont = r.container.trim().toUpperCase();
+    if (!isValidContainerFormat(cont)) { skipped.push(`${cont}: invalid container format`); return; }
+    if (seenInBatch.has(cont)) { skipped.push(`${cont}: duplicate container within this file`); return; }
+    const dupTrip = findLiveTripByContainer(cont);
+    if (dupTrip) { skipped.push(`${cont}: already on an active trip`); return; }
+
     const truck  = state.db.trucks.find(t=>t.reg===r.truck||t.id===r.truck);
     const driver = state.db.drivers.find(d=>d.name===r.driver||d.id===r.driver);
-    if (!r.container) return;
+    if (truck && (truck.status !== 'available' || busyTrucks.has(truck.id))) { skipped.push(`${cont}: truck ${truck.reg} unavailable or already used in this batch`); return; }
+    if (driver && (driver.status !== 'available' || busyDrivers.has(driver.id))) { skipped.push(`${cont}: driver ${driver.name} unavailable or already used in this batch`); return; }
+
+    seenInBatch.add(cont);
+    if (truck)  busyTrucks.add(truck.id);
+    if (driver) busyDrivers.add(driver.id);
+
     const trip = {
-      id: uid('TRIP'), container: r.container.toUpperCase(),
+      id: uid('TRIP'), container: cont,
       truckId: truck?.id||'', driverId: driver?.id||'',
       ctype: r.ctype||'20ft Dry', workType: r.workType||'Port → Depot',
       origin: r.origin||'', dest: r.dest||'', distance: parseInt(r.distance)||0,
@@ -1853,12 +2010,17 @@ function processBulkDispatch() {
     };
     state.db.trips.push(trip);
     if (truck)  truck.status  = 'on_trip';
-    if (driver) { driver.status='on_trip'; driver.load=r.container; }
+    if (driver) { driver.status='on_trip'; driver.load=cont; }
     created++;
   });
   scheduleSave(); buildBadges();
-  addAudit(state.profile.username, 'Bulk Dispatch', `${created} dispatches imported`);
-  toast(`${created} dispatches created`, 'success');
+  addAudit(state.profile.username, 'Bulk Dispatch', `${created} dispatches imported${skipped.length?`, ${skipped.length} skipped`:''}`);
+  if (skipped.length) {
+    toast(`${created} created, ${skipped.length} skipped — see details`, skipped.length && !created ? 'error' : 'warning', 6000);
+    openModal('Bulk Dispatch Result', `<div style="margin-bottom:10px;font-size:12px;color:var(--text)">${created} dispatch(es) created successfully.</div><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Skipped Rows (${skipped.length})</div><div style="max-height:240px;overflow-y:auto">${skipped.map(s=>`<div class="ops-notice" style="margin-bottom:6px">${s}</div>`).join('')}</div>`);
+  } else {
+    toast(`${created} dispatches created`, 'success');
+  }
   refreshContainerHistory();
   document.getElementById('bulkDispatchPreview').style.display = 'none';
   renderDispatchQueue();
@@ -2001,7 +2163,9 @@ function showAddShutoutModal() {
 function saveShutout() {
   const cont = document.getElementById('sh_cont').value.trim().toUpperCase();
   if (!cont) { toast('Container number required', 'error'); return; }
-  if (!/^[A-Z0-9]{4,12}$/.test(cont)) { toast('Invalid container format', 'error'); return; }
+  if (!isValidContainerFormat(cont)) { toast('Invalid container format', 'error'); return; }
+  const dupShutout = state.db.shutouts.find(s=>(s.container||'').toUpperCase()===cont && s.status==='open');
+  if (dupShutout) { toast(`${cont} already has an open shutout record — resolve it before flagging again`, 'error'); return; }
   state.db.shutouts.push({
     id: uid('SHT'), container: cont,
     line: document.getElementById('sh_line').value,
@@ -2051,7 +2215,9 @@ function showAddInterchangeModal() {
 function saveInterchange() {
   const cont = document.getElementById('ic_cont').value.trim().toUpperCase();
   if (!cont) { toast('Container number required', 'error'); return; }
-  if (!/^[A-Z0-9]{4,12}$/.test(cont)) { toast('Invalid container format', 'error'); return; }
+  if (!isValidContainerFormat(cont)) { toast('Invalid container format', 'error'); return; }
+  const dupIc = state.db.interchange.find(i=>(i.container||'').toUpperCase()===cont && i.type===document.getElementById('ic_type').value && new Date(i.date).toDateString()===new Date().toDateString());
+  if (dupIc) { toast(`${cont} already has a ${document.getElementById('ic_type').value} interchange record logged today`, 'warning'); return; }
   state.db.interchange.push({
     id: uid('IC'), container: cont,
     type: document.getElementById('ic_type').value,
@@ -2095,6 +2261,8 @@ function saveShippingLine() {
   const name = document.getElementById('sl_name').value.trim();
   if (!code||!name) { toast('Code and name required', 'error'); return; }
   if (code.length > 6) { toast('Code must be max 6 characters', 'error'); return; }
+  const dupLine = findLineByCode(code);
+  if (dupLine) { toast(`Code ${code} is already used by ${dupLine.name}`, 'error'); return; }
   state.db.shippingLines.push({
     id: uid('SL'), code, name,
     contact: sanitize(document.getElementById('sl_email').value.trim()),
@@ -2361,6 +2529,10 @@ function renderAllocManual() {
   fillSelect('ma_driver', state.db.drivers.filter(d=>d.status==='available'), d=>[d.id, d.name]);
   fillSelect('ma_trip',   state.db.trips.filter(t=>t.status==='active'), t=>[t.id, `${t.container} — ${t.origin}→${t.dest}`]);
   fillSelect('ma_assign_trip', state.db.trips.filter(t=>t.status==='active'), t=>[t.id, `${t.container} — ${t.origin}→${t.dest}`]);
+  // Allocation must never let anyone type a container that Dispatch
+  // doesn't already know about — the dropdown is built strictly from
+  // dispatchedContainers(), which reads off state.db.trips.
+  fillSelect('ma_container', dispatchedContainers(), c=>[c, c]);
   renderStatusOverridePanel();
 }
 
@@ -2428,15 +2600,23 @@ function manualAssignDriverToTruck() {
 
 function manualAssignContainer() {
   const tripId = document.getElementById('ma_trip').value;
-  const cont   = document.getElementById('ma_container').value.trim().toUpperCase();
-  if (!tripId||!cont) { toast('Select trip and enter container','error'); return; }
-  if (!/^[A-Z0-9]{4,12}$/.test(cont)) { toast('Invalid container format', 'error'); return; }
+  const cont   = (document.getElementById('ma_container').value || '').trim().toUpperCase();
+  if (!tripId||!cont) { toast('Select a trip and a container', 'error'); return; }
+  if (!isValidContainerFormat(cont)) { toast('Invalid container format', 'error'); return; }
+  // Defense in depth: even though the dropdown is built exclusively from
+  // dispatchedContainers(), re-check server-side-style in case the DOM
+  // was tampered with or the list is stale.
+  if (!dispatchedContainers().includes(cont)) { toast(`${cont} has not been dispatched — add it from Dispatch first`, 'error'); return; }
   const t = state.db.trips.find(t=>t.id===tripId);
-  if (t) { t.container=cont; t.ctype=document.getElementById('ma_ctype').value; }
+  if (!t) { toast('Trip not found', 'error'); return; }
+  const dupTrip = findLiveTripByContainer(cont, tripId);
+  if (dupTrip) { toast(`${cont} is already assigned to another active trip (${dupTrip.origin} → ${dupTrip.dest})`, 'error'); return; }
+  t.container=cont; t.ctype=document.getElementById('ma_ctype').value;
   scheduleSave();
   addAudit(state.profile.username, 'Container Assignment', `${cont} → ${tripId}`);
   refreshContainerHistory();
   toast(`${cont} assigned to trip`, 'success');
+  renderAllocManual();
 }
 
 function showAllocationRulesModal() {
@@ -2965,13 +3145,27 @@ function liveSearch(q) {
   const results = [];
   const db = state.db;
   q = q.toLowerCase().trim();
+
+  // Container is matched first and separately from Trip: a container
+  // can span multiple trips (re-dispatches) plus shutout/interchange
+  // history, so it gets its own consolidated result + detail view
+  // rather than jumping straight to a single trip record.
+  const containerMatches = new Set();
+  db.trips.forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
+  db.shutouts.forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
+  db.interchange.forEach(i=>{ if ((i.container||'').toLowerCase().includes(q)) containerMatches.add(i.container.toUpperCase()); });
+  [...containerMatches].slice(0,3).forEach(cont=>{
+    const live = findLiveTripByContainer(cont);
+    results.push({ type:'Container', label:cont, sub: live ? `Active — ${live.status.replace('_',' ')}` : 'No active trip', fn: `showContainerDetail('${cont}')` });
+  });
+
   db.trucks.filter(t=>t.reg.toLowerCase().includes(q)||t.make.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
     results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:t.status, fn: `showTruckDetail('${t.id}')` });
   });
   db.drivers.filter(d=>d.name.toLowerCase().includes(q)||d.phone.includes(q)).slice(0,3).forEach(d=>{
     results.push({ type:'Driver', label:d.name, sub:d.status, fn: `showDriverDetail('${d.id}')` });
   });
-  db.trips.filter(t=>t.container.toLowerCase().includes(q)||t.origin.toLowerCase().includes(q)||t.dest.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+  db.trips.filter(t=>t.origin.toLowerCase().includes(q)||t.dest.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
     results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:t.status, fn: `showTripDetail('${t.id}')` });
   });
   db.invoices.filter(i=>i.client.toLowerCase().includes(q)||i.ref.toLowerCase().includes(q)).slice(0,2).forEach(i=>{
@@ -2981,6 +3175,64 @@ function liveSearch(q) {
     ? results.map(r=>`<div class="search-result-item" onclick="${r.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''"><span class="search-result-type">${r.type}</span><div><div style="font-size:12px;color:var(--text)">${r.label}</div><div style="font-size:10px;color:var(--text-3)">${r.sub}</div></div></div>`).join('')
     : `<div style="padding:12px 16px;font-size:11.5px;color:var(--text-3)">No results for "${q}"</div>`;
   panel.style.display='block';
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § CONTAINER 360° VIEW
+   Triggered from global search (and reusable anywhere else). Pulls
+   together every record that mentions a container number — trips
+   (current + historical), shutouts, interchange — plus the set of
+   actions the current user is actually allowed to take on it, so a
+   single search answers "where is this box and what can I do with
+   it" in one place instead of scattering it across sections.
+────────────────────────────────────────────────────────────────── */
+function showContainerDetail(contRaw) {
+  const cont = (contRaw||'').trim().toUpperCase();
+  const db = state.db;
+  const trips = db.trips.filter(t=>(t.container||'').toUpperCase()===cont).sort((a,b)=>new Date(b.startTime)-new Date(a.startTime));
+  const shutouts = db.shutouts.filter(s=>(s.container||'').toUpperCase()===cont).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const interchange = db.interchange.filter(i=>(i.container||'').toUpperCase()===cont).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const liveTrip = trips.find(isTripLive) || null;
+
+  if (!trips.length && !shutouts.length && !interchange.length) {
+    openModal(`Container — ${cont}`, `<div class="empty-state"><div class="empty-state-icon">📦</div><div class="empty-state-label">No records found for ${cont}</div></div>`);
+    return;
+  }
+
+  const summary = `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+    <div class="mono" style="font-size:18px;color:var(--gold);font-weight:700">${cont}</div>
+    ${liveTrip ? sbadge(liveTrip.status) : '<span style="font-size:11px;color:var(--text-3)">No active trip</span>'}
+  </div>`;
+
+  const tripsHtml = `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip History (${trips.length})</div>` + (
+    trips.length ? trips.map(t=>`<div class="activity-row" style="cursor:pointer" onclick="closeModal();showTripDetail('${t.id}')"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${t.origin} → ${t.dest}</div><div style="font-size:10px;color:var(--text-3)">${truckName(t.truckId)} · ${driverName(t.driverId)}</div></div>${sbadge(t.status)}<div class="act-time">${fmtDate(t.startTime)}</div></div>`).join('')
+    : '<div class="empty-state" style="padding:10px 0"><div class="empty-state-label">No trips recorded</div></div>'
+  );
+
+  const shutoutsHtml = shutouts.length ? `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Shutout History (${shutouts.length})</div>` +
+    shutouts.map(s=>`<div class="activity-row"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${s.reason||'—'}</div><div style="font-size:10px;color:var(--text-3)">${s.vessel||''} ${s.voyage?`· Voyage ${s.voyage}`:''}</div></div>${sbadge(s.status)}<div class="act-time">${fmtDate(s.date)}</div></div>`).join('') : '';
+
+  const interchangeHtml = interchange.length ? `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Interchange History (${interchange.length})</div>` +
+    interchange.map(i=>`<div class="activity-row"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${i.type} · ${i.condition}</div><div style="font-size:10px;color:var(--text-3)">${lineName(i.line)}</div></div>${sbadge(i.status)}<div class="act-time">${fmtDate(i.date)}</div></div>`).join('') : '';
+
+  // Actions are permission-gated exactly like everywhere else — a
+  // viewer or someone unrelated to this container sees no action
+  // buttons at all, just the history above.
+  const actions = [];
+  if (liveTrip && canUpdateTripStatus(liveTrip)) {
+    nextTripStatuses(liveTrip.status).forEach(s=>{
+      actions.push(`<button class="filter-btn" onclick="closeModal();quickSetTripStatus('${liveTrip.id}','${s}')">${s.replace('_',' ')}</button>`);
+    });
+  }
+  if (liveTrip) actions.push(`<button class="modal-btn ghost" onclick="closeModal();showTripDetail('${liveTrip.id}')">View Trip →</button>`);
+  if (isAdmin() || isClerk() || isDispatch()) {
+    actions.push(`<button class="modal-btn ghost" onclick="closeModal();showAddShutoutModal()">Flag Shutout</button>`);
+    actions.push(`<button class="modal-btn ghost" onclick="closeModal();showAddInterchangeModal()">Record Interchange</button>`);
+  }
+
+  const actionsHtml = actions.length ? `<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Actions</div><div style="display:flex;gap:6px;flex-wrap:wrap">${actions.join('')}</div></div>` : '';
+
+  openModal(`Container — ${cont}`, `${summary}${tripsHtml}${shutoutsHtml}${interchangeHtml}${actionsHtml}`);
 }
 
 function handleSearch(q) {
@@ -3188,10 +3440,17 @@ async function importPublicBooking(bookingId) {
   if (error || !booking) { toast('Booking not found', 'error'); return; }
   if (booking.status !== 'pending') { toast('Already processed', 'warning'); return; }
 
+  const rawCont = (booking.container || '').trim().toUpperCase();
+  if (rawCont) {
+    if (!isValidContainerFormat(rawCont)) { toast(`Booking has an invalid container number (${rawCont}) — fix it before importing`, 'error'); return; }
+    const dupTrip = findLiveTripByContainer(rawCont);
+    if (dupTrip) { toast(`${rawCont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}). Resolve that trip first, or correct the container number on this booking.`, 'error'); return; }
+  }
+
   // Create trip
   const trip = {
     id: uid('TRIP'),
-    container: booking.container || `PUB-${booking.id.slice(0,8)}`,
+    container: rawCont || `PUB-${booking.id.slice(0,8)}`,
     ctype: booking.cargo_type || '20ft Dry',
     workType: booking.service_type || 'Other',
     origin: booking.pickup_location || '—',
