@@ -164,14 +164,14 @@ function seedData() {
 ────────────────────────────────────────────────────────────────── */
 
 /* ---- row <-> app-object mappers -------------------------------- */
-function truckToRow(t)  { return { id:t.id, reg:t.reg, make:t.make, type:t.type, year:t.year, colour:t.colour, status:t.status, fuel_pct:Math.round(t.fuelPct), mileage:t.mileage, last_service:t.lastService, next_service:t.nextService, notes:t.notes, licence_plate:t.licencePlate, vin:t.vin }; }
-function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type, year:r.year, colour:r.colour, status:r.status, fuelPct:r.fuel_pct, mileage:r.mileage, driver:null, lastService:r.last_service, nextService:r.next_service, notes:r.notes||'', img:'', licencePlate:r.licence_plate, vin:r.vin||'' }; }
+function truckToRow(t)  { return { id:t.id, reg:t.reg, make:t.make, type:t.type, year:t.year, colour:t.colour, status:t.status, fuel_pct:Math.round(t.fuelPct), mileage:t.mileage, last_service:t.lastService, next_service:t.nextService, notes:t.notes, licence_plate:t.licencePlate, vin:t.vin, img:t.img||'' }; }
+function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type, year:r.year, colour:r.colour, status:r.status, fuelPct:r.fuel_pct, mileage:r.mileage, driver:null, lastService:r.last_service, nextService:r.next_service, notes:r.notes||'', img:r.img||'', licencePlate:r.licence_plate, vin:r.vin||'' }; }
 
 function driverToRow(d)  { return { id:d.id, name:d.name, phone:d.phone, licence:d.licence, licence_exp:d.licenceExp, status:d.status, truck_id:d.truckId||null, trips_today:d.tripsToday, current_load:d.load, location:d.location, id_no:d.idNo, rating:d.rating, profile_id:d.profileId||null }; }
 function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence:r.licence, licenceExp:r.licence_exp, status:r.status, truckId:r.truck_id, tripsToday:r.trips_today, load:r.current_load, location:r.location, idNo:r.id_no, rating:r.rating, profileId:r.profile_id||null }; }
 
-function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref }; }
-function tripFromRow(r){ return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference }; }
+function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null }; }
+function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null }; }
 
 function maintToRow(m)  { return { id:m.id, truck_id:m.truckId||null, type:m.type, description:m.desc, priority:m.priority, status:m.status, date:m.date, cost:m.cost, technician:m.tech, resolved_date:m.resolvedDate }; }
 function maintFromRow(r){ return { id:r.id, truckId:r.truck_id, type:r.type, desc:r.description, priority:r.priority, status:r.status, date:r.date, cost:r.cost, tech:r.technician, resolvedDate:r.resolved_date }; }
@@ -553,16 +553,6 @@ function findLiveTripByContainer(cont, excludeTripId) {
   if (!cont) return null;
   const c = cont.trim().toUpperCase();
   return state.db.trips.find(t => t.id !== excludeTripId && isTripLive(t) && (t.container || '').toUpperCase() === c) || null;
-}
-
-// All container numbers that have ever passed through Dispatch (i.e.
-// exist as a trip record). This is the single source of truth for the
-// Allocation section's container dropdown — Allocation must only ever
-// offer containers that Dispatch already knows about, never free text.
-function dispatchedContainers() {
-  const set = new Set();
-  state.db.trips.forEach(t => { if (t.container) set.add(t.container.trim().toUpperCase()); });
-  return [...set].sort();
 }
 
 function isValidContainerFormat(cont) { return /^[A-Z0-9]{4,12}$/.test(cont); }
@@ -1232,7 +1222,7 @@ function renderTrucks(f){
   const trucks=f==='all'?state.db.trucks:state.db.trucks.filter(t=>t.status===f);
   const grid=document.getElementById('truckGrid');
   if(!grid) return;
-  grid.innerHTML=trucks.map(t=>`<div class="truck-card" onclick="showTruckDetail('${t.id}')"><div class="truck-card-inner"><div class="truck-card-status-bar ${t.status}"></div><div class="truck-card-body"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="truck-card-reg">${t.reg}</div><div class="truck-card-make">${t.make} · ${t.year}</div><div class="truck-card-type">${t.type}</div></div>${sbadge(t.status)}</div><div class="truck-card-stats"><div class="ts"><b>${fmt(t.mileage)} km</b>Odometer</div><div class="ts"><b>${t.driver?driverName(t.driver).split(' ')[0]:'—'}</b>Driver</div><div class="ts"><b>${t.colour}</b>Colour</div><div class="fuel-bar-outer"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3);margin-top:6px"><span>Fuel</span><span style="color:${fuelColour(t.fuelPct)}">${t.fuelPct}%</span></div><div class="fuel-bar"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🚛</div><div class="empty-state-label">No trucks match this filter</div></div>';
+  grid.innerHTML=trucks.map(t=>`<div class="truck-card${t.img?' has-photo':''}" onclick="showTruckDetail('${t.id}')">${t.img?`<img class="truck-card-img" src="${t.img}" alt="${t.reg}" /><div class="truck-card-img-overlay"></div>`:''}<div class="truck-card-inner"><div class="truck-card-status-bar ${t.status}"></div><div class="truck-card-body"><div style="display:flex;justify-content:space-between;align-items:flex-start"><div><div class="truck-card-reg">${t.reg}</div><div class="truck-card-make">${t.make} · ${t.year}</div><div class="truck-card-type">${t.type}</div></div>${sbadge(t.status)}</div><div class="truck-card-stats"><div class="ts"><b>${fmt(t.mileage)} km</b>Odometer</div><div class="ts"><b>${t.driver?driverName(t.driver).split(' ')[0]:'—'}</b>Driver</div><div class="ts"><b>${t.colour}</b>Colour</div><div class="fuel-bar-outer"><div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-3);margin-top:6px"><span>Fuel</span><span style="color:${fuelColour(t.fuelPct)}">${t.fuelPct}%</span></div><div class="fuel-bar"><div class="fuel-fill" style="width:${t.fuelPct}%;background:${fuelColour(t.fuelPct)}"></div></div></div></div></div></div></div>`).join('')||'<div class="empty-state"><div class="empty-state-icon">🚛</div><div class="empty-state-label">No trucks match this filter</div></div>';
 }
 
 function showTruckDetail(id) {
@@ -1397,7 +1387,11 @@ function showTripDetail(id) {
   const t = state.db.trips.find(t=>t.id===id);
   if (!t) return;
   const line = state.db.shippingLines.find(l=>l.id===t.shippingLine);
-  openModal(`Trip — ${t.container}`, `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
+  const needsDispatch = isTripLive(t) && (!t.truckId || !t.driverId);
+  const gallery = Array.isArray(t.containerImages) && t.containerImages.length
+    ? `<div style="margin-bottom:14px"><div class="fg" style="margin:0 0 6px"><label>Container Photos (${t.containerImages.length})</label></div><div class="container-img-grid">${t.containerImages.map(src=>`<div class="container-img-thumb view-only"><img src="${src}" onclick="window.open('${src}','_blank')" /></div>`).join('')}</div></div>`
+    : '';
+  openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();showSection('dispatch',document.querySelector('[data-section=dispatch]'));loadTripIntoDispatchForm('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -1820,10 +1814,21 @@ function dpSaveShutout(driverId) {
 
 /* ──────────────────────────────────────────────────────────────────
    § 13  DISPATCH CONSOLE
+   This is now the single, official place where a trip's full details
+   (truck, driver, container, route, work type, photos…) get filled
+   in — whether the trip originated as a manual entry here, a bulk
+   upload here, or an imported Public Booking that arrived with no
+   truck/driver yet. Allocation (§ below) is intentionally limited to
+   pairing a driver with a truck; it no longer touches trip/container
+   fields at all.
 ────────────────────────────────────────────────────────────────── */
+let _dispatchEditingTripId = null;   // set while completing an awaiting-dispatch trip instead of creating a new one
+let _dispatchContainerImages = [];   // base64 photos for the trip currently in the form
+
 function renderDispatch() {
   populateDispatchSelects();
   renderDispatchQueue();
+  renderAwaitingDispatch();
 }
 
 function populateDispatchSelects() {
@@ -1847,6 +1852,80 @@ function renderDispatchQueue() {
   container.innerHTML = `<div class="panel"><div class="panel-head"><span class="panel-title">Dispatch Queue</span><span class="panel-meta">${pending.length} active</span></div><div>${pending.map(t=>`<div class="dispatch-queue-item" onclick="showTripDetail('${t.id}')"><div class="dqi-ref">${t.container.slice(-7)}</div><div class="dqi-route"><div style="font-size:12px;font-weight:600;color:var(--text)">${t.origin}→${t.dest}</div><div style="font-size:10px;color:var(--text-3)">${truckName(t.truckId)}</div></div>${sbadge(t.status)}<div class="dqi-time">${timeAgo(t.startTime)}</div></div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No dispatches yet</div></div>'}</div></div>`;
 }
 
+// Trips missing a truck and/or driver — regardless of where they came
+// from (Public Bookings import today; any other future source
+// tomorrow) — surface here so Dispatch stays the one place trip
+// details get completed. A trip only counts as "awaiting" while it's
+// still live (not completed/cancelled).
+function awaitingDispatchTrips() {
+  return state.db.trips.filter(t => isTripLive(t) && (!t.truckId || !t.driverId));
+}
+
+function renderAwaitingDispatch() {
+  const el = document.getElementById('awaitingDispatchList');
+  const meta = document.getElementById('awaitingDispatchMeta');
+  if (!el) return;
+  const rows = awaitingDispatchTrips().sort((a,b)=> new Date(b.startTime)-new Date(a.startTime));
+  if (meta) meta.textContent = rows.length ? `${rows.length} awaiting` : '';
+  el.innerHTML = rows.map(t => `
+    <div class="dispatch-queue-item" style="cursor:default">
+      <div class="dqi-ref">${(t.container||'').slice(-7)}</div>
+      <div class="dqi-route">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${t.origin} → ${t.dest}</div>
+        <div style="font-size:10px;color:var(--text-3)">${t.bookingId ? 'From public booking' : 'Needs truck & driver'} · ${t.workType}</div>
+      </div>
+      <button class="modal-btn primary" onclick="loadTripIntoDispatchForm('${t.id}')">Complete Dispatch →</button>
+    </div>
+  `).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-icon">✅</div><div class="empty-state-label">Nothing awaiting dispatch</div></div>';
+}
+
+// Pulls an unassigned trip (e.g. an imported public booking) into the
+// Single Dispatch form so its truck, driver, and any remaining
+// container details can be filled in from the one official form.
+function loadTripIntoDispatchForm(tripId) {
+  const t = state.db.trips.find(tr=>tr.id===tripId);
+  if (!t) { toast('Trip not found', 'error'); return; }
+  _dispatchEditingTripId = tripId;
+  _dispatchContainerImages = Array.isArray(t.containerImages) ? [...t.containerImages] : [];
+
+  switchDispatchTab('single', document.querySelector('#sec-dispatch .filter-btn'));
+  populateDispatchSelects();
+
+  document.getElementById('d_truck').value    = t.truckId || '';
+  document.getElementById('d_driver').value   = t.driverId || '';
+  document.getElementById('d_container').value= t.container && !t.container.startsWith('PUB-') ? t.container : '';
+  document.getElementById('d_ctype').value    = t.ctype || '20ft Dry';
+  document.getElementById('d_worktype').value = t.workType || 'Port → Depot';
+  document.getElementById('d_line').value     = t.shippingLine || '';
+  document.getElementById('d_origin').value   = t.origin && t.origin !== '—' ? t.origin : '';
+  document.getElementById('d_dest').value     = t.dest && t.dest !== '—' ? t.dest : '';
+  document.getElementById('d_distance').value = t.distance || '';
+  document.getElementById('d_priority').value = t.priority || 'Normal';
+  document.getElementById('d_ref').value      = t.ref || '';
+  document.getElementById('d_notes').value    = t.notes || '';
+
+  renderContainerImgGrid();
+
+  const banner = document.getElementById('dispatchEditBanner');
+  if (banner) banner.style.display = 'flex';
+  const btn = document.getElementById('dispatchSubmitBtn');
+  if (btn) btn.textContent = 'Complete Dispatch →';
+
+  document.getElementById('dispatchTabSingle').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function cancelDispatchEdit() {
+  _dispatchEditingTripId = null;
+  clearContainerImgs();
+  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
+  populateDispatchSelects();
+  const banner = document.getElementById('dispatchEditBanner');
+  if (banner) banner.style.display = 'none';
+  const btn = document.getElementById('dispatchSubmitBtn');
+  if (btn) btn.textContent = 'Create Dispatch Order →';
+  toast('Dispatch form cleared', 'info');
+}
+
 function createDispatch() {
   const truck  = document.getElementById('d_truck').value;
   const driver = document.getElementById('d_driver').value;
@@ -1854,6 +1933,8 @@ function createDispatch() {
   const origin = document.getElementById('d_origin').value.trim();
   const dest   = document.getElementById('d_dest').value.trim();
   const dist   = parseInt(document.getElementById('d_distance').value)||0;
+  const editingId = _dispatchEditingTripId;
+
   if (!truck || !driver || !cont || !origin || !dest) {
     toast('Fill in all required fields', 'error');
     return;
@@ -1862,7 +1943,7 @@ function createDispatch() {
     toast('Invalid container number format. Use letters and numbers only.', 'error');
     return;
   }
-  const dupTrip = findLiveTripByContainer(cont);
+  const dupTrip = findLiveTripByContainer(cont, editingId || undefined);
   if (dupTrip) {
     toast(`${cont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}, status: ${dupTrip.status.replace('_',' ')}). Complete or resolve it before re-dispatching this container.`, 'error');
     return;
@@ -1883,22 +1964,50 @@ function createDispatch() {
   const priority = document.getElementById('d_priority').value;
   const ref      = document.getElementById('d_ref').value.trim() || `REF-${Date.now().toString().slice(-6)}`;
   const notes    = sanitize(document.getElementById('d_notes').value.trim());
-  const etaMs = Date.now() + (dist/35)*3600000;
-  const trip = {
-    id: uid('TRIP'), truckId: truck, driverId: driver, container: cont,
-    ctype, workType, origin, dest, shippingLine: line,
-    status: 'active', startTime: new Date().toISOString(),
-    eta: new Date(etaMs).toISOString(), distance: dist, priority, notes, ref,
-  };
-  state.db.trips.push(trip);
-  const t = state.db.trucks.find(t=>t.id===truck);
-  const d = state.db.drivers.find(d=>d.id===driver);
-  if (t) t.status = 'on_trip';
-  if (d) { d.status='on_trip'; d.load=cont; d.truckId=truck; }
-  scheduleSave();
-  buildBadges();
-  addAudit(state.profile.username, 'Dispatch Created', `${cont} — ${origin} → ${dest}`);
-  toast(`Dispatch created — ${cont}`, 'success');
+  const images   = [..._dispatchContainerImages];
+
+  if (editingId) {
+    // Completing a trip that arrived without a truck/driver (e.g. an
+    // imported public booking) — update it in place rather than
+    // creating a duplicate trip record.
+    const t = state.db.trips.find(tr=>tr.id===editingId);
+    if (!t) { toast('That trip no longer exists — it may have been removed.', 'error'); cancelDispatchEdit(); return; }
+    Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images });
+    const tk = state.db.trucks.find(tr=>tr.id===truck);
+    const dv = state.db.drivers.find(d=>d.id===driver);
+    if (tk) tk.status = 'on_trip';
+    if (dv) { dv.status='on_trip'; dv.load=cont; dv.truckId=truck; }
+    scheduleSave();
+    buildBadges();
+    addAudit(state.profile.username, 'Dispatch Completed', `${cont} — ${origin} → ${dest}`);
+    toast(`Dispatch completed — ${cont}`, 'success');
+    _dispatchEditingTripId = null;
+    const banner = document.getElementById('dispatchEditBanner');
+    if (banner) banner.style.display = 'none';
+    const btn = document.getElementById('dispatchSubmitBtn');
+    if (btn) btn.textContent = 'Create Dispatch Order →';
+  } else {
+    const etaMs = Date.now() + (dist/35)*3600000;
+    const trip = {
+      id: uid('TRIP'), truckId: truck, driverId: driver, container: cont,
+      ctype, workType, origin, dest, shippingLine: line,
+      status: 'active', startTime: new Date().toISOString(),
+      eta: new Date(etaMs).toISOString(), distance: dist, priority, notes, ref,
+      containerImages: images,
+    };
+    state.db.trips.push(trip);
+    const t = state.db.trucks.find(t=>t.id===truck);
+    const d = state.db.drivers.find(d=>d.id===driver);
+    if (t) t.status = 'on_trip';
+    if (d) { d.status='on_trip'; d.load=cont; d.truckId=truck; }
+    scheduleSave();
+    buildBadges();
+    addAudit(state.profile.username, 'Dispatch Created', `${cont} — ${origin} → ${dest}`);
+    toast(`Dispatch created — ${cont}`, 'success');
+  }
+
+  clearContainerImgs();
+  ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
   refreshContainerHistory();
   renderDispatch();
 }
@@ -1906,29 +2015,53 @@ function createDispatch() {
 function switchDispatchTab(tab, btn) {
   document.getElementById('dispatchTabSingle').style.display = tab==='single' ? 'block' : 'none';
   document.getElementById('dispatchTabBulk').style.display   = tab==='bulk'   ? 'block' : 'none';
-  document.querySelectorAll('#sec-dispatch .filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('#sec-dispatch .filter-row .filter-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
 }
 
-function previewContainerImg(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (!file.type.startsWith('image/')) { toast('Please select an image file', 'error'); return; }
-  if (file.size > 2*1024*1024) { toast('Image too large. Max 2MB.', 'error'); return; }
-  const reader = new FileReader();
-  reader.onload = ev => {
-    document.getElementById('containerImgThumb').src = ev.target.result;
-    document.getElementById('containerImgPreview').style.display = 'block';
-    document.getElementById('containerImgLabel').textContent = file.name;
-  };
-  reader.readAsDataURL(file);
+// Multiple container photos: files accumulate in _dispatchContainerImages
+// until the dispatch is submitted (or the form is cleared/cancelled).
+function previewContainerImgs(e) {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  files.forEach(file => {
+    if (!file.type.startsWith('image/')) { toast(`${file.name} is not an image — skipped`, 'error'); return; }
+    if (file.size > 2*1024*1024) { toast(`${file.name} is too large — max 2MB. Skipped.`, 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      _dispatchContainerImages.push(ev.target.result);
+      renderContainerImgGrid();
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = ''; // allow re-selecting the same file(s) again later
 }
 
-function clearContainerImg() {
-  document.getElementById('d_container_img').value = '';
-  document.getElementById('containerImgThumb').src = '';
-  document.getElementById('containerImgPreview').style.display = 'none';
-  document.getElementById('containerImgLabel').textContent = 'Upload container photo';
+function renderContainerImgGrid() {
+  const wrap = document.getElementById('containerImgPreview');
+  const grid = document.getElementById('containerImgGrid');
+  const label = document.getElementById('containerImgLabel');
+  if (!wrap || !grid) return;
+  if (!_dispatchContainerImages.length) {
+    wrap.style.display = 'none';
+    if (label) label.textContent = 'Upload container photos';
+    return;
+  }
+  wrap.style.display = 'block';
+  if (label) label.textContent = `${_dispatchContainerImages.length} photo${_dispatchContainerImages.length>1?'s':''} attached`;
+  grid.innerHTML = _dispatchContainerImages.map((src,i)=>`<div class="container-img-thumb"><img src="${src}" /><button type="button" class="container-img-remove" onclick="removeContainerImgAt(${i})" title="Remove">✕</button></div>`).join('');
+}
+
+function removeContainerImgAt(idx) {
+  _dispatchContainerImages.splice(idx,1);
+  renderContainerImgGrid();
+}
+
+function clearContainerImgs() {
+  _dispatchContainerImages = [];
+  const fileInput = document.getElementById('d_container_img');
+  if (fileInput) fileInput.value = '';
+  renderContainerImgGrid();
 }
 
 function handleBulkDrop(e) {
@@ -2525,14 +2658,12 @@ function renderAllocAuto() {
 }
 
 function renderAllocManual() {
+  // Allocation is scoped to pairing a driver with a truck ONLY. Trip
+  // and container details (which truck/driver is on which container,
+  // route, work type, photos…) are filled exclusively from the
+  // Dispatch Console — see loadTripIntoDispatchForm / createDispatch.
   fillSelect('ma_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.status}`]);
   fillSelect('ma_driver', state.db.drivers.filter(d=>d.status==='available'), d=>[d.id, d.name]);
-  fillSelect('ma_trip',   state.db.trips.filter(t=>t.status==='active'), t=>[t.id, `${t.container} — ${t.origin}→${t.dest}`]);
-  fillSelect('ma_assign_trip', state.db.trips.filter(t=>t.status==='active'), t=>[t.id, `${t.container} — ${t.origin}→${t.dest}`]);
-  // Allocation must never let anyone type a container that Dispatch
-  // doesn't already know about — the dropdown is built strictly from
-  // dispatchedContainers(), which reads off state.db.trips.
-  fillSelect('ma_container', dispatchedContainers(), c=>[c, c]);
   renderStatusOverridePanel();
 }
 
@@ -2572,50 +2703,18 @@ function applyAllocation(truckId, driverId) {
 function manualAssignDriverToTruck() {
   const truck  = document.getElementById('ma_truck').value;
   const driver = document.getElementById('ma_driver').value;
-  const tripId = document.getElementById('ma_assign_trip') ? document.getElementById('ma_assign_trip').value : '';
+  const notes  = sanitize((document.getElementById('ma_notes')?.value||'').trim());
   if (!truck||!driver) { toast('Select truck and driver','error'); return; }
   const t=state.db.trucks.find(t=>t.id===truck);
   const d=state.db.drivers.find(d=>d.id===driver);
   if(t) t.driver=driver;
   if(d) d.truckId=truck;
 
-  // Close the loop: if an active trip was selected, patch its
-  // truck_id/driver_id too so the dispatch record reflects the new
-  // assignment (same fields written by tripToRow / read by tripFromRow).
-  let trip = null;
-  if (tripId) {
-    trip = state.db.trips.find(tr=>tr.id===tripId);
-    if (trip) { trip.truckId=truck; trip.driverId=driver; }
-  }
-
   scheduleSave();
-  addAudit(state.profile.username, 'Manual Assignment', `${t?.reg} ← ${d?.name}${trip ? ` (trip ${trip.container||trip.id})` : ''}`);
-  toast(trip ? `${d?.name} assigned to ${t?.reg} on trip ${trip.container||trip.id}` : `${d?.name} assigned to ${t?.reg}`, 'success');
-
-  // Refresh anything that displays trip truck/driver linkage.
-  if (document.getElementById('tripsList')) renderTrips(_tripFilter);
-  if (document.getElementById('dispatchQueue')) renderDispatchQueue();
-  renderAllocManual();
-}
-
-function manualAssignContainer() {
-  const tripId = document.getElementById('ma_trip').value;
-  const cont   = (document.getElementById('ma_container').value || '').trim().toUpperCase();
-  if (!tripId||!cont) { toast('Select a trip and a container', 'error'); return; }
-  if (!isValidContainerFormat(cont)) { toast('Invalid container format', 'error'); return; }
-  // Defense in depth: even though the dropdown is built exclusively from
-  // dispatchedContainers(), re-check server-side-style in case the DOM
-  // was tampered with or the list is stale.
-  if (!dispatchedContainers().includes(cont)) { toast(`${cont} has not been dispatched — add it from Dispatch first`, 'error'); return; }
-  const t = state.db.trips.find(t=>t.id===tripId);
-  if (!t) { toast('Trip not found', 'error'); return; }
-  const dupTrip = findLiveTripByContainer(cont, tripId);
-  if (dupTrip) { toast(`${cont} is already assigned to another active trip (${dupTrip.origin} → ${dupTrip.dest})`, 'error'); return; }
-  t.container=cont; t.ctype=document.getElementById('ma_ctype').value;
-  scheduleSave();
-  addAudit(state.profile.username, 'Container Assignment', `${cont} → ${tripId}`);
-  refreshContainerHistory();
-  toast(`${cont} assigned to trip`, 'success');
+  addAudit(state.profile.username, 'Manual Assignment', `${t?.reg} ← ${d?.name}${notes?` — ${notes}`:''}`);
+  toast(`${d?.name} assigned to ${t?.reg}. Open Dispatch Console to put them on a trip.`, 'success');
+  const notesEl = document.getElementById('ma_notes');
+  if (notesEl) notesEl.value = '';
   renderAllocManual();
 }
 
@@ -3447,7 +3546,37 @@ async function importPublicBooking(bookingId) {
     if (dupTrip) { toast(`${rawCont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}). Resolve that trip first, or correct the container number on this booking.`, 'error'); return; }
   }
 
-  // Create trip
+  // Flip the booking's status FIRST, and require the DB to actually
+  // confirm the row changed (via .select()) before we touch local
+  // state. Previously this update ran fire-and-forget with no error
+  // check, so a failed write (e.g. blocked by an RLS policy) left the
+  // booking silently stuck on "pending" forever even though a trip
+  // had already been created locally — and worse, a second click
+  // would import it again since the fresh SELECT above still read
+  // status:'pending'. Doing the DB write first and bailing out loudly
+  // on failure closes both holes.
+  const { data: updatedRows, error: updateErr } = await supabase
+    .from('public_bookings')
+    .update({ status: 'imported' })
+    .eq('id', bookingId)
+    .eq('status', 'pending') // only succeeds if it's still pending — blocks double-import races
+    .select();
+
+  if (updateErr) {
+    toast(`Import failed — could not update booking status (${updateErr.message}). No trip was created.`, 'error');
+    return;
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    toast('Import failed — booking was already processed by someone else. Refresh and check.', 'warning');
+    renderPublicBookings();
+    return;
+  }
+
+  // Create the trip only now that we know the booking is safely marked
+  // imported. It is intentionally left unassigned (no truck/driver) —
+  // it will surface in the Dispatch Console's "Awaiting Dispatch" queue
+  // so an officer can pick a truck, driver, and finish the container
+  // details from the single, official dispatch form.
   const trip = {
     id: uid('TRIP'),
     container: rawCont || `PUB-${booking.id.slice(0,8)}`,
@@ -3465,13 +3594,16 @@ async function importPublicBooking(bookingId) {
     ref: `PUB-${booking.id.slice(0,8)}`,
     truckId: null,
     driverId: null,
+    containerImages: [],
+    bookingId: booking.id,
   };
   state.db.trips.push(trip);
   scheduleSave();
 
-  await supabase.from('public_bookings').update({ status: 'imported' }).eq('id', bookingId);
-  toast('Imported as trip ' + trip.id.slice(-6), 'success');
+  toast('Imported — awaiting dispatch (trip ' + trip.id.slice(-6) + ')', 'success');
   renderPublicBookings();
+  if (document.getElementById('awaitingDispatchList')) renderAwaitingDispatch();
+  buildBadges();
 }
 
 async function showPublicBookingDetail(id) {
