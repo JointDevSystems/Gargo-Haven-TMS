@@ -356,7 +356,7 @@ body::before {
 
 /* ══ TRUCK GRID ══ */
 .truck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
-.truck-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; cursor: pointer; transition: var(--transition); position: relative; min-height: 190px; }
+.truck-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; cursor: pointer; transition: var(--transition); position: relative; }
 .truck-card:hover { border-color: var(--gold-border); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
 .truck-card-img { width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0; z-index: 0; }
 .truck-card-img-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(to bottom, rgba(6,8,15,0.55) 0%, rgba(6,8,15,0.92) 100%); z-index: 1; }
@@ -412,14 +412,6 @@ body::before {
 .upload-label { font-size: 14px; font-weight: 600; color: var(--text-2); margin-top: 8px; }
 .upload-sub { font-size: 11px; color: var(--text-3); margin-top: 4px; }
 .bulk-template-row { margin-top: 10px; }
-
-/* ══ CONTAINER PHOTO GRID (multi-upload) ══ */
-.container-img-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
-.container-img-thumb { position: relative; width: 100%; aspect-ratio: 1/1; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
-.container-img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.container-img-thumb.view-only img { cursor: zoom-in; }
-.container-img-remove { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; border: none; background: rgba(6,8,15,0.75); color: var(--text); font-size: 10px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: var(--transition); }
-.container-img-remove:hover { background: var(--red); }
 
 /* ══ RATE PREVIEW ══ */
 .rate-preview-box { background: var(--gold-dim); border: 1px solid var(--gold-border); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; }
