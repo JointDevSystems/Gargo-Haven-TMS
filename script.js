@@ -22,6 +22,16 @@ let state = {
   lastActivity      : Date.now(),
   sessionTimeout    : null,
   _saveDebounce     : null,
+
+  // Live GPS tracking (driver-side geolocation + admin-side map)
+  geoWatchId        : null,   // navigator.geolocation.watchPosition handle
+  trackingActive    : false,  // true while this device is actively pushing GPS pings
+  lastGeoSend       : 0,      // throttle timestamp
+  trackingMap       : null,   // google.maps.Map instance (admin Live Tracking)
+  truckMarkers      : {},     // truckId -> google.maps.Marker
+  _gmapsLoading     : false,
+  _gmapsCallbacks   : [],
+  _trackingChannel  : null,   // supabase realtime channel for tracking_positions
 };
 
 
@@ -924,6 +934,7 @@ async function forceLogout(reason) {
 }
 
 async function performLogout(auditDetail) {
+  stopDriverTracking();
   addAudit(state.profile?.username || 'system', 'Logout', auditDetail);
   await supabase.auth.signOut();
   state.currentUser = null;
@@ -974,6 +985,7 @@ function bootShell() {
   applyRoleUI();
   buildBadges();
   buildAlerts();
+  subscribeTrackingRealtime();
   const landing = defaultSectionForRole();
   showSection(landing, document.querySelector(`.nav-item[data-section="${landing}"]`));
   populateSelects();
@@ -1007,6 +1019,7 @@ function startClock() {
     if(td) td.textContent=now.toLocaleDateString('en-KE',{weekday:'short',day:'2-digit',month:'short',year:'numeric'});
     const dpc=document.getElementById('dp_clock');
     if(dpc) dpc.textContent=now.toLocaleTimeString('en-KE',{hour:'2-digit',minute:'2-digit'});
+    if (isDriver()) renderDutyBar();
   };
   update();
   setInterval(update,1000);
@@ -1137,7 +1150,7 @@ const sectionRenderers = {
   shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
   workshop:()=>renderWorkshop('all'), invoicing:()=>renderInvoicing('all'),
   allocation:()=>renderAllocation('auto'), workanalysis:()=>renderWorkAnalysis('all'),
-  reports:()=>renderReport('overview'), tripreports:trcInit, livetracking:renderTracking,
+  reports:()=>renderReport('overview'), tripreports:trcInit, livetracking:initTrackingSection,
   usermgmt:renderUserMgmt, settings:renderSettings,
   publicbookings: renderPublicBookings,
 };
@@ -1572,6 +1585,11 @@ function renderDriverPortal() {
     return;
   }
 
+  // Live GPS tracking follows duty status automatically: on duty + truck
+  // assigned => tracking runs; off duty (or suspended) => tracking stops.
+  if (driverShouldTrack(driver)) startDriverTracking(); else stopDriverTracking();
+  renderDutyBar();
+
   body.innerHTML = `
     <div class="filter-row" style="margin-bottom:14px;flex-wrap:wrap">
       <button class="filter-btn${_dpTab==='trip'?' active':''}" onclick="dpSwitchTab('trip')">My Trip</button>
@@ -1673,6 +1691,184 @@ function dpRenderCompletedTripsTab(el, driver) {
             : `<tr><td colspan="6" class="empty-td">No completed trips yet</td></tr>`}
         </tbody>
       </table></div>
+    </div>
+  `;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § DUTY STATUS & LIVE GPS TRACKING (driver-side)
+   The driver's own phone/browser IS the truck's GPS source. While a
+   driver is on duty (status !== 'off_duty' and !== 'suspended') and
+   has a truck assigned, we watch their device location and push
+   pings straight to `tracking_positions` (bypassing the heavy
+   whole-DB scheduleSave/saveDB path — this needs to be cheap and
+   frequent). The moment a driver marks himself off duty, tracking
+   stops immediately and their truck's marker is cleared from the
+   live map.
+────────────────────────────────────────────────────────────────── */
+const GEO_PING_INTERVAL_MS = 10000;   // min gap between GPS pings sent to Supabase
+const ZONE_LOOKUP_INTERVAL_MS = 60000; // reverse-geocode less often (quota-friendly)
+let _lastZoneVal = null;
+let _lastZoneFetch = 0;
+
+function driverShouldTrack(driver) {
+  return !!(driver && driver.truckId && driver.status !== 'off_duty' && driver.status !== 'suspended');
+}
+
+function startDriverTracking() {
+  const driver = myDriverRecord();
+  if (!driverShouldTrack(driver)) { stopDriverTracking(); return; }
+  if (state.geoWatchId != null) return; // already running
+  if (!navigator.geolocation) { toast('This device does not support GPS location', 'error'); return; }
+  state.geoWatchId = navigator.geolocation.watchPosition(onDriverPosition, onDriverGeoError, {
+    enableHighAccuracy: true, maximumAge: 5000, timeout: 20000,
+  });
+}
+
+async function stopDriverTracking(clearRemote) {
+  if (state.geoWatchId != null) {
+    navigator.geolocation.clearWatch(state.geoWatchId);
+    state.geoWatchId = null;
+  }
+  state.trackingActive = false;
+  if (clearRemote) {
+    const driver = myDriverRecord();
+    if (driver?.truckId) {
+      const { error } = await supabase.from('tracking_positions').delete().eq('truck_id', driver.truckId);
+      if (error) console.error('tracking_positions clear failed:', error.message);
+      delete state.db.trackingPositions[driver.truckId];
+      if (state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
+    }
+  }
+  renderDutyBar();
+}
+
+function headingToCompass(deg) {
+  if (deg == null || isNaN(deg)) return '—';
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  return dirs[Math.round(deg / 45) % 8];
+}
+
+async function onDriverPosition(pos) {
+  const now = Date.now();
+  if (now - state.lastGeoSend < GEO_PING_INTERVAL_MS) return; // throttle
+  state.lastGeoSend = now;
+
+  const driver = myDriverRecord();
+  if (!driverShouldTrack(driver)) { stopDriverTracking(); return; }
+
+  const { latitude, longitude, speed, heading } = pos.coords;
+  const kph = (speed != null && speed >= 0 && !isNaN(speed)) ? Math.round(speed * 3.6) : 0;
+  const hd  = headingToCompass(heading);
+
+  let zone = _lastZoneVal;
+  if (!zone || now - _lastZoneFetch > ZONE_LOOKUP_INTERVAL_MS) {
+    zone = await reverseGeocodeZone(latitude, longitude);
+    _lastZoneVal = zone;
+    _lastZoneFetch = now;
+  }
+
+  const row = { truck_id: driver.truckId, lat: latitude, lng: longitude, speed: kph, heading: hd, zone, last_update: new Date().toISOString() };
+  const { error } = await supabase.from('tracking_positions').upsert(row, { onConflict: 'truck_id' });
+  if (error) {
+    console.error('tracking ping failed:', error.message);
+  } else {
+    state.db.trackingPositions[driver.truckId] = { lat: latitude, lng: longitude, speed: kph, heading: hd, zone, lastUpdate: row.last_update };
+    if (state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
+  }
+  state.trackingActive = true;
+  renderDutyBar();
+}
+
+function onDriverGeoError(err) {
+  state.trackingActive = false;
+  let msg = 'GPS signal lost — retrying…';
+  if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied — enable location access for this site to allow tracking';
+  else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Location unavailable — check your device GPS/network';
+  toast(msg, 'error', 4500);
+  renderDutyBar();
+}
+
+// Reverse-geocodes via the Google Maps Geocoding REST API (uses the same
+// API key configured in Settings → Integration). Falls back to raw
+// coordinates if no key is set or the lookup fails, so tracking still
+// works even before Google Maps is configured.
+async function reverseGeocodeZone(lat, lng) {
+  const key = state.db.settings?.mapApiKey;
+  if (!key) return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  try {
+    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${encodeURIComponent(key)}`);
+    const data = await res.json();
+    if (data.status === 'OK' && data.results?.length) {
+      const comps = data.results[0].address_components || [];
+      const pick = comps.find(c => c.types.includes('sublocality') || c.types.includes('neighborhood'))
+                || comps.find(c => c.types.includes('locality'));
+      return pick ? pick.long_name : (data.results[0].formatted_address || '').split(',')[0] || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    }
+  } catch (e) {
+    console.warn('Reverse geocode failed:', e);
+  }
+  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+}
+
+// Driver taps "Go Off Duty" / "Go On Duty". Off-duty immediately halts
+// GPS tracking and clears this driver's truck from the live map; going
+// back on duty resumes it.
+function dpToggleDuty() {
+  const driver = myDriverRecord();
+  if (!driver) return;
+  const onDuty = driver.status !== 'off_duty' && driver.status !== 'suspended';
+  if (onDuty) {
+    openModal('Go Off Duty', `
+      <div class="ops-notice" style="margin-bottom:14px">Going off duty will immediately stop live GPS tracking for your truck and mark you unavailable for new trips. You can go back on duty any time.</div>
+      <button class="submit-btn" style="background:var(--red)" onclick="confirmGoOffDuty()">Confirm — Go Off Duty</button>
+    `);
+  } else {
+    const hasActiveTrip = state.db.trips.some(t => t.driverId === driver.id && t.status !== 'completed');
+    driver.status = hasActiveTrip ? 'on_trip' : 'available';
+    scheduleSave();
+    addAudit(state.profile.username, 'Duty Status', `${driver.name} went ON duty`);
+    toast('You are now on duty — location tracking started', 'success');
+    renderDriverPortal();
+  }
+}
+
+function confirmGoOffDuty() {
+  const driver = myDriverRecord();
+  if (!driver) return;
+  driver.status = 'off_duty';
+  scheduleSave();
+  addAudit(state.profile.username, 'Duty Status', `${driver.name} went OFF duty`);
+  closeModal();
+  stopDriverTracking(true);
+  toast('You are now off duty — location tracking stopped', 'info');
+  renderDriverPortal();
+}
+
+// Persistent duty/tracking status bar shown above every driver-portal tab.
+function renderDutyBar() {
+  const el = document.getElementById('dp_dutyBar');
+  if (!el) return;
+  const driver = myDriverRecord();
+  if (!driver) { el.innerHTML = ''; return; }
+  const onDuty = driver.status !== 'off_duty' && driver.status !== 'suspended';
+  const tracking = state.trackingActive && onDuty;
+  const pos = driver.truckId ? state.db.trackingPositions[driver.truckId] : null;
+  let sub;
+  if (!driver.truckId) sub = 'No truck assigned — tracking unavailable';
+  else if (!onDuty) sub = 'Tracking stopped';
+  else if (tracking && pos) sub = `Live · ${pos.zone} · updated ${timeAgo(pos.lastUpdate)}`;
+  else if (onDuty) sub = 'Acquiring GPS signal…';
+  el.innerHTML = `
+    <div class="duty-bar">
+      <div class="duty-status">
+        <span class="duty-dot ${tracking ? 'live' : ''}"></span>
+        <div>
+          <div class="duty-label">${onDuty ? (driver.status === 'on_trip' ? 'On Duty · On Trip' : 'On Duty · Available') : 'Off Duty'}</div>
+          <div class="duty-sub">${sub}</div>
+        </div>
+      </div>
+      <button class="action-btn ${onDuty ? 'danger' : ''}" onclick="dpToggleDuty()">${onDuty ? 'Go Off Duty' : 'Go On Duty'}</button>
     </div>
   `;
 }
@@ -3251,18 +3447,28 @@ function downloadTextFile(filename, content, mime) {
 
 /* ──────────────────────────────────────────────────────────────────
    § 25  LIVE TRACKING
+   Real GPS: every position in trackingPositions was pushed by an
+   on-duty driver's own device (see onDriverPosition above). This
+   section just displays it — a Google Map with live markers, plus
+   the sidebar/movements lists — and stays in sync via a Supabase
+   realtime subscription so new pings appear without a refresh.
 ────────────────────────────────────────────────────────────────── */
+function initTrackingSection() {
+  renderTracking();
+  initTrackingMap();
+}
+
 function renderTracking() {
   const pos  = state.db.trackingPositions;
   const trks = Object.keys(pos);
-  document.getElementById('trackingMeta').textContent = `${trks.length} vehicles tracked`;
+  document.getElementById('trackingMeta').textContent = `${trks.length} vehicle${trks.length===1?'':'s'} tracked`;
   const vehicles = document.getElementById('trackingVehicles');
   if (vehicles) {
     vehicles.innerHTML = trks.map(id=>{
       const p = pos[id];
       const t = state.db.trucks.find(t=>t.id===id);
-      return `<div class="tv-item"><div class="tv-reg">${t?.reg||id}</div><div>Speed: ${p.speed} km/h · ${p.heading}</div><div style="font-size:9px;color:var(--text-3)">${p.zone}</div></div>`;
-    }).join('');
+      return `<div class="tv-item"><div class="tv-reg">${t?.reg||id}</div><div>Speed: ${p.speed} km/h · ${p.heading}</div><div style="font-size:9px;color:var(--text-3)">${p.zone} · ${timeAgo(p.lastUpdate)}</div></div>`;
+    }).join('') || '<div style="padding:10px;color:var(--text-3);font-size:11px">No drivers currently on duty</div>';
   }
   const movements = document.getElementById('trackingMovements');
   if (movements) {
@@ -3273,21 +3479,137 @@ function renderTracking() {
   }
   const geofence = document.getElementById('trackingGeofence');
   if (geofence) {
-    geofence.innerHTML = `<div class="geofence-row"><div style="font-size:11px;color:var(--green)">✓ Kilindini Gate</div><div style="font-size:9.5px;color:var(--text-3)">KDA 001A · ${timeAgo(new Date(Date.now()-12*60000).toISOString())}</div></div><div class="geofence-row"><div style="font-size:11px;color:var(--amber)">⚠ B8 Zone Alert</div><div style="font-size:9.5px;color:var(--text-3)">KDE 123E · ${timeAgo(new Date(Date.now()-4*3600000).toISOString())}</div></div><div style="padding:12px;color:var(--text-3);font-size:10.5px">Live geofence events — GPS integration required for production.</div>`;
+    geofence.innerHTML = `<div style="padding:12px;color:var(--text-3);font-size:10.5px">Geofence alerting isn't wired up yet — positions above are live GPS from drivers' devices.</div>`;
   }
 }
 
-function refreshTracking() {
-  Object.keys(state.db.trackingPositions).forEach(id=>{
-    const p = state.db.trackingPositions[id];
-    if(p.speed>0) {
-      p.lat += (Math.random()-0.5)*0.002;
-      p.lng += (Math.random()-0.5)*0.002;
-      p.lastUpdate = new Date().toISOString();
+// Manual refresh: re-pull tracking_positions from Supabase directly
+// (the realtime subscription keeps this in sync automatically, but this
+// gives admins an explicit "force refresh" control too).
+async function refreshTracking() {
+  const { data, error } = await supabase.from('tracking_positions').select('*');
+  if (error) { toast('Could not refresh tracking data', 'error'); return; }
+  const fresh = {};
+  (data || []).forEach(r => { fresh[r.truck_id] = { lat:r.lat, lng:r.lng, speed:r.speed, heading:r.heading, zone:r.zone, lastUpdate:r.last_update }; });
+  state.db.trackingPositions = fresh;
+  renderTracking();
+  updateTrackingMarkers();
+  toast('Tracking positions refreshed', 'info', 1800);
+}
+
+// Keeps every connected admin/ops browser in sync the instant a driver's
+// device pushes (or clears, on going off-duty) a GPS ping — no polling.
+function subscribeTrackingRealtime() {
+  if (state._trackingChannel) return;
+  state._trackingChannel = supabase.channel('tracking-positions-live')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'tracking_positions' }, (payload) => {
+      if (payload.eventType === 'DELETE') {
+        const id = payload.old?.truck_id;
+        if (id) delete state.db.trackingPositions[id];
+      } else {
+        const r = payload.new;
+        state.db.trackingPositions[r.truck_id] = { lat:r.lat, lng:r.lng, speed:r.speed, heading:r.heading, zone:r.zone, lastUpdate:r.last_update };
+      }
+      if (state.currentSection === 'livetracking') { renderTracking(); updateTrackingMarkers(); }
+    })
+    .subscribe();
+}
+
+/* ---- Google Maps: dynamic script loader ------------------------- */
+function loadGoogleMapsScript(cb) {
+  const key = state.db.settings?.mapApiKey;
+  if (!key) { cb(new Error('no-key')); return; }
+  if (window.google && window.google.maps) { cb(null); return; }
+  if (state._gmapsLoading) { state._gmapsCallbacks.push(cb); return; }
+  state._gmapsLoading = true;
+  state._gmapsCallbacks = [cb];
+  window.__gmapsReady = () => {
+    state._gmapsLoading = false;
+    state._gmapsCallbacks.forEach(fn => fn(null));
+    state._gmapsCallbacks = [];
+  };
+  const s = document.createElement('script');
+  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__gmapsReady`;
+  s.async = true;
+  s.onerror = () => {
+    state._gmapsLoading = false;
+    state._gmapsCallbacks.forEach(fn => fn(new Error('load-failed')));
+    state._gmapsCallbacks = [];
+  };
+  document.head.appendChild(s);
+}
+
+function initTrackingMap() {
+  const canvas = document.getElementById('trackingMapCanvas');
+  if (!canvas) return;
+  if (state.trackingMap) { updateTrackingMarkers(); return; }
+  loadGoogleMapsScript((err) => {
+    if (err) {
+      canvas.innerHTML = `<div class="tracking-map-placeholder"><div style="font-family:var(--font-brand);font-size:20px;color:var(--gold);margin-bottom:8px">GARGO</div><div style="font-size:12px;color:var(--text-2);max-width:380px;line-height:1.6">Add a Google Maps API key in Settings → Integration Status to enable the live interactive map. Vehicle data will still populate the lists on the right.</div></div>`;
+      return;
+    }
+    canvas.innerHTML = '';
+    state.trackingMap = new google.maps.Map(canvas, {
+      center: { lat: -4.0435, lng: 39.6682 }, // Mombasa
+      zoom: 12,
+      disableDefaultUI: false,
+      styles: [
+        { elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
+        { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a1a' }] },
+        { elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
+        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a2a2a' }] },
+        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1b2a' }] },
+        { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+      ],
+    });
+    state.truckMarkers = {};
+    updateTrackingMarkers();
+  });
+}
+
+function updateTrackingMarkers() {
+  if (!state.trackingMap || !window.google) return;
+  const pos = state.db.trackingPositions || {};
+  const seen = new Set();
+  Object.entries(pos).forEach(([truckId, p]) => {
+    seen.add(truckId);
+    const truck = state.db.trucks.find(t => t.id === truckId);
+    const label = truck?.reg || truckId;
+    const isMoving = p.speed > 0;
+    const icon = {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: isMoving ? '#3ecf6e' : '#8b8b8b',
+      fillOpacity: 1,
+      strokeColor: '#0b0b0b',
+      strokeWeight: 2,
+    };
+    let marker = state.truckMarkers[truckId];
+    if (!marker) {
+      marker = new google.maps.Marker({
+        position: { lat: p.lat, lng: p.lng },
+        map: state.trackingMap,
+        icon,
+        label: { text: label, color: '#fff', fontSize: '9px', fontWeight: '700' },
+      });
+      marker.infoWindow = new google.maps.InfoWindow();
+      marker.addListener('click', () => {
+        const cur = state.db.trackingPositions[truckId];
+        if (!cur) return;
+        marker.infoWindow.setContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${timeAgo(cur.lastUpdate)}</span></div>`);
+        marker.infoWindow.open(state.trackingMap, marker);
+      });
+      state.truckMarkers[truckId] = marker;
+    } else {
+      marker.setPosition({ lat: p.lat, lng: p.lng });
+      marker.setIcon(icon);
     }
   });
-  renderTracking();
-  toast('Tracking positions refreshed','info',1800);
+  // A truck disappears from trackingPositions the instant its driver goes
+  // off duty (see stopDriverTracking) — drop its marker immediately too.
+  Object.keys(state.truckMarkers).forEach(id => {
+    if (!seen.has(id)) { state.truckMarkers[id].setMap(null); delete state.truckMarkers[id]; }
+  });
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -3387,6 +3709,28 @@ function renderSettings() {
   document.getElementById('totalRecords').textContent = total;
   const bk = state.db.settings?.backupDate;
   document.getElementById('lastBackup').textContent = bk ? fmtDate(bk) : 'Never';
+
+  const keySet = !!(state.db.settings?.mapApiKey);
+  const gmStatus = document.getElementById('gmapsStatusVal');
+  if (gmStatus) { gmStatus.textContent = keySet ? 'Connected' : 'Not configured'; gmStatus.style.color = keySet ? 'var(--green)' : 'var(--amber)'; }
+  const gpsStatus = document.getElementById('gpsStatusVal');
+  if (gpsStatus) { gpsStatus.textContent = 'Live · Driver GPS'; gpsStatus.style.color = 'var(--green)'; }
+  const input = document.getElementById('set_mapApiKey');
+  if (input && document.activeElement !== input) input.value = state.db.settings?.mapApiKey || '';
+}
+
+// Admin-only: saves the Google Maps API key used by both the Live
+// Tracking map (Maps JavaScript API) and driver-side reverse geocoding
+// (Geocoding API) — enable both APIs for this key in Google Cloud Console.
+function saveMapApiKey() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const val = document.getElementById('set_mapApiKey').value.trim();
+  state.db.settings.mapApiKey = val;
+  scheduleSave();
+  addAudit(state.profile.username, 'Settings Updated', `Google Maps API key ${val ? 'configured' : 'cleared'}`);
+  toast(val ? 'Google Maps API key saved' : 'Google Maps API key cleared', 'success');
+  state.trackingMap = null; // force the map to re-init with the new key next time it's opened
+  renderSettings();
 }
 
 function requireSettingsVault() {
@@ -3844,14 +4188,10 @@ function startLivePulse() {
     state.db.trucks.filter(t=>t.status==='on_trip').forEach(t=>{
       t.fuelPct = Math.max(0, t.fuelPct - 0.1);
     });
-    Object.keys(state.db.trackingPositions).forEach(id=>{
-      const p=state.db.trackingPositions[id];
-      if (p.speed>0) {
-        p.lat += (Math.random()-0.5)*0.0001;
-        p.lng += (Math.random()-0.5)*0.0001;
-        p.lastUpdate = new Date().toISOString();
-      }
-    });
+    // Truck positions are no longer simulated here — they come from real
+    // driver-device GPS pings (onDriverPosition) pushed live via Supabase
+    // realtime (subscribeTrackingRealtime). This tick just re-renders so
+    // "time ago" labels stay fresh even with no new pings.
     buildAlerts();
     if (state.currentSection==='dashboard') renderDashboard();
     if (state.currentSection==='livetracking') renderTracking();
