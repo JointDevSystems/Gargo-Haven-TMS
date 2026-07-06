@@ -9,6 +9,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
 
+    <!-- Leaflet (OpenStreetMap) — free, no API key required -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -926,7 +930,7 @@
                                     <div class="tracking-map-placeholder">
                                         <div style="font-family:var(--font-brand);font-size:22px;color:var(--gold);margin-bottom:8px">GARGO</div>
                                         <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);letter-spacing:2px;margin-bottom:20px">LOADING MAP…</div>
-                                        <div style="font-size:12px;color:var(--text-2);max-width:400px;line-height:1.6">Positions come from drivers' own phones in real time — no simulation. Add a Google Maps API key in Settings → Integration Status to render the interactive map.</div>
+                                        <div style="font-size:12px;color:var(--text-2);max-width:400px;line-height:1.6">Positions come from drivers' own phones in real time — no simulation.</div>
                                     </div>
                                 </div>
                                 <div class="tracking-vehicles" id="trackingVehicles"></div>
@@ -1018,22 +1022,12 @@
                             <div class="report-block">
                                 <h3>Integration Status</h3>
                                 <div class="detail-row"><span>Supabase DB</span><b style="color:var(--green)">Connected</b></div>
-                                <div class="detail-row"><span>Google Maps API</span><b id="gmapsStatusVal" style="color:var(--amber)">Not configured</b></div>
+                                <div class="detail-row"><span>Map Provider</span><b style="color:var(--green)">OpenStreetMap (Leaflet) · Active</b></div>
                                 <div class="detail-row"><span>GPS Telemetry</span><b id="gpsStatusVal" style="color:var(--green)">Live · Driver GPS</b></div>
                                 <div class="detail-row"><span>Client Portal</span><b style="color:var(--green)">Active</b></div>
                                 <div class="detail-row"><span>WhatsApp Alerts</span><b style="color:var(--green)">Active</b></div>
                                 <div class="detail-row"><span>MPesa Payments</span><b style="color:var(--text-3)">Not configured</b></div>
-                                <div class="fg" style="margin-top:14px">
-                                    <label>Google Maps API Key</label>
-                                    <div class="pw-wrap">
-                                        <input type="password" id="set_mapApiKey" placeholder="AIza…" autocomplete="off" />
-                                        <button class="pw-eye" type="button" onclick="togglePwVis('set_mapApiKey',this)" tabindex="-1">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                        </button>
-                                    </div>
-                                    <button class="action-btn" style="margin-top:8px;width:100%;justify-content:center" onclick="saveMapApiKey()">Save API Key</button>
-                                    <div style="font-size:9.5px;color:var(--text-3);margin-top:8px;line-height:1.5">Powers the live fleet map and driver-side address lookups. Create a key in the <a href="https://console.cloud.google.com/google/maps-apis" target="_blank" rel="noopener" style="color:var(--gold)">Google Cloud Console</a> with the Maps JavaScript API and Geocoding API enabled.</div>
-                                </div>
+                                <div style="font-size:9.5px;color:var(--text-3);margin-top:14px;line-height:1.5">The live fleet map uses free OpenStreetMap tiles via Leaflet.js — no API key or billing account required. Address lookups use the free Nominatim reverse-geocoding service.</div>
                             </div>
                             <div class="report-block">
                                 <h3>Company Details</h3>
