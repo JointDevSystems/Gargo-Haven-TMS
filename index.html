@@ -132,6 +132,11 @@
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
                             Reports
                         </button>
+                        <button class="admin-nav-item" onclick="showAdminSection('tripreports',this)" id="adminBtn-tripreports">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V9M13 17V5M17 17v-4M4 17h16"/></svg>
+                            Trip Reports
+                            <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </button>
                     </div>
                     <div class="admin-nav-group">
                         <span class="admin-nav-group-label">Platform</span>
@@ -816,6 +821,93 @@
                         <div id="reportContent"></div>
                     </section>
 
+                    <!-- TRIP REPORTS & AUDIT CENTRE (ADMIN ONLY) -->
+                    <section class="section" id="sec-tripreports">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                Trip Reports &amp; Audit Centre
+                            </div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="trcSwitchTab('trips',this)">Trip Reports</button>
+                                <button class="filter-btn" onclick="trcSwitchTab('audit',this)">Audit Log</button>
+                            </div>
+                        </div>
+
+                        <div class="ops-notice" style="margin-bottom:14px">🔒 Restricted to System Administrators. Every query and export run here is written to the Audit Log for accountability.</div>
+
+                        <!-- TRIP REPORTS TAB -->
+                        <div id="trcTab-trips">
+                            <div class="panel" style="padding:16px;margin-bottom:14px">
+                                <div class="trc-period-row">
+                                    <button class="filter-btn active" onclick="trcSetPeriod('hourly',this)">Hourly</button>
+                                    <button class="filter-btn" onclick="trcSetPeriod('daily',this)">Daily</button>
+                                    <button class="filter-btn" onclick="trcSetPeriod('weekly',this)">Weekly</button>
+                                    <button class="filter-btn" onclick="trcSetPeriod('monthly',this)">Monthly</button>
+                                    <button class="filter-btn" onclick="trcSetPeriod('custom',this)">Custom Range</button>
+                                </div>
+                                <div class="trc-filter-grid">
+                                    <div class="fg" style="margin:0"><label>From</label><input type="datetime-local" id="trcFrom" /></div>
+                                    <div class="fg" style="margin:0"><label>To</label><input type="datetime-local" id="trcTo" /></div>
+                                    <div class="fg" style="margin:0"><label>Truck</label><select id="trcTruck"><option value="">All Trucks</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Driver</label><select id="trcDriver"><option value="">All Drivers</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Status</label><select id="trcStatus"><option value="">All Statuses</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Work Type</label><select id="trcWorkType"><option value="">All Types</option></select></div>
+                                </div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                                    <button class="action-btn" onclick="trcRunTripReport()">▶ Run Report (Live Supabase Query)</button>
+                                    <button class="action-btn ghost" onclick="trcExportTripsCSV()" id="trcExportTripsBtn" disabled>⬇ Export CSV</button>
+                                    <button class="action-btn ghost" onclick="trcExportTripsJSON()" id="trcExportTripsJsonBtn" disabled>⬇ Export JSON</button>
+                                </div>
+                            </div>
+                            <div id="trcTripSummary"></div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Trip Records</span><span class="panel-meta" id="trcTripMeta">Run a report to populate</span></div>
+                                <div class="table-wrap">
+                                    <table class="data-table">
+                                        <thead><tr>
+                                            <th>Container</th><th>Truck</th><th>Driver</th><th>Work Type</th><th>Route</th><th>Status</th><th>Priority</th><th>Distance</th><th>Started</th><th>ETA</th>
+                                        </tr></thead>
+                                        <tbody id="trcTripBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AUDIT LOG TAB -->
+                        <div id="trcTab-audit" style="display:none">
+                            <div class="panel" style="padding:16px;margin-bottom:14px">
+                                <div class="trc-period-row">
+                                    <button class="filter-btn active" onclick="trcSetAuditPeriod('today',this)">Today</button>
+                                    <button class="filter-btn" onclick="trcSetAuditPeriod('week',this)">This Week</button>
+                                    <button class="filter-btn" onclick="trcSetAuditPeriod('month',this)">This Month</button>
+                                    <button class="filter-btn" onclick="trcSetAuditPeriod('all',this)">All Time</button>
+                                    <button class="filter-btn" onclick="trcSetAuditPeriod('custom',this)">Custom Range</button>
+                                </div>
+                                <div class="trc-filter-grid">
+                                    <div class="fg" style="margin:0"><label>From</label><input type="datetime-local" id="trcAuditFrom" /></div>
+                                    <div class="fg" style="margin:0"><label>To</label><input type="datetime-local" id="trcAuditTo" /></div>
+                                    <div class="fg" style="margin:0"><label>User</label><select id="trcAuditUser"><option value="">All Users</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Search Action / Detail</label><input type="text" id="trcAuditSearch" placeholder="e.g. Dispatch, Deleted, Invoice…" /></div>
+                                </div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                                    <button class="action-btn" onclick="trcRunAuditQuery()">▶ Run Query (Live Supabase Query)</button>
+                                    <button class="action-btn ghost" onclick="trcExportAuditCSV()" id="trcExportAuditBtn" disabled>⬇ Export CSV</button>
+                                </div>
+                            </div>
+                            <div id="trcAuditSummary"></div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Audit Trail</span><span class="panel-meta" id="trcAuditMeta">Run a query to populate</span></div>
+                                <div class="table-wrap">
+                                    <table class="data-table">
+                                        <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+                                        <tbody id="trcAuditBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
                     <!-- LIVE TRACKING -->
                     <section class="section" id="sec-livetracking">
                         <div class="sec-toolbar">
@@ -873,7 +965,10 @@
                             </div>
                         </div>
                         <div class="panel" style="margin-top:14px">
-                            <div class="panel-head"><span class="panel-title">Audit Log</span></div>
+                            <div class="panel-head">
+                                <span class="panel-title">Audit Log</span>
+                                <button class="action-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="showAdminSection('tripreports', document.getElementById('adminBtn-tripreports')); trcSwitchTab('audit', document.querySelector('#trcTab-audit') ? document.querySelectorAll('#sec-tripreports .filter-row .filter-btn')[1] : null)">Full Audit Centre →</button>
+                            </div>
                             <div id="auditLog"></div>
                         </div>
                     </section>

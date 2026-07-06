@@ -592,7 +592,7 @@ const ROLE_SIDEBAR = {
   viewer:   ['trucks','drivers','trips'],
 };
 const ROLE_ADMINRAIL = {
-  admin:    ['invoicing','allocation','workanalysis','reports','livetracking','usermgmt','settings'],
+  admin:    ['invoicing','allocation','workanalysis','reports','tripreports','livetracking','usermgmt','settings'],
   clerk:    ['allocation'],
   dispatch: ['allocation'],
   finance:  ['invoicing','workanalysis','reports'],
@@ -623,7 +623,7 @@ function applyRoleUI() {
   if (dashBtn) dashBtn.style.display='none';
 
   const railAllowed = allowedAdminRailSections();
-  ['invoicing','allocation','workanalysis','reports','livetracking','usermgmt','settings'].forEach(sec=>{
+  ['invoicing','allocation','workanalysis','reports','tripreports','livetracking','usermgmt','settings'].forEach(sec=>{
     const btn=document.getElementById(`adminBtn-${sec}`);
     if (btn) btn.style.display = railAllowed.includes(sec) ? '' : 'none';
   });
@@ -1085,7 +1085,8 @@ const SECTION_META = {
   shippinglines:['Container Ops','Shipping Lines'], requisitions:['Compliance','Requisitions'],
   workshop:['Compliance','Workshop'], invoicing:['Finance','Invoicing'],
   allocation:['Intelligence','Allocation'], workanalysis:['Intelligence','Work Analysis'],
-  reports:['Intelligence','Reports'], livetracking:['Platform','Live Tracking'],
+  reports:['Intelligence','Reports'], tripreports:['Intelligence','Trip Reports & Audit Centre'],
+  livetracking:['Platform','Live Tracking'],
   usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
   
 };
@@ -1136,7 +1137,7 @@ const sectionRenderers = {
   shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
   workshop:()=>renderWorkshop('all'), invoicing:()=>renderInvoicing('all'),
   allocation:()=>renderAllocation('auto'), workanalysis:()=>renderWorkAnalysis('all'),
-  reports:()=>renderReport('overview'), livetracking:renderTracking,
+  reports:()=>renderReport('overview'), tripreports:trcInit, livetracking:renderTracking,
   usermgmt:renderUserMgmt, settings:renderSettings,
   publicbookings: renderPublicBookings,
 };
@@ -2961,6 +2962,291 @@ function renderReport(tab, btn) {
 
 function reportRow(label, val) {
   return `<div class="report-row"><span class="label">${label}</span><span class="val">${val}</span></div>`;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   § 24b  TRIP REPORTS & AUDIT CENTRE  (Admin only)
+   Every report/query here hits Supabase live rather than the cached
+   in-memory state.db, so results always reflect the current server
+   data — including anything written by other sessions/devices.
+────────────────────────────────────────────────────────────────── */
+const trc = { tripRows: [], auditRows: [], period: 'hourly', auditPeriod: 'today' };
+
+function trcSwitchTab(tab, btn) {
+  document.querySelectorAll('#sec-tripreports > .sec-toolbar .filter-row .filter-btn').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  const tripsTab = document.getElementById('trcTab-trips');
+  const auditTab = document.getElementById('trcTab-audit');
+  if (tripsTab) tripsTab.style.display = tab==='trips' ? '' : 'none';
+  if (auditTab) auditTab.style.display = tab==='audit' ? '' : 'none';
+}
+
+function trcInit() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  trcPopulateFilterOptions();
+  if (!document.getElementById('trcFrom').value) {
+    trcSetPeriod('hourly', document.querySelector('#trcTab-trips .trc-period-row .filter-btn'));
+  }
+  if (!document.getElementById('trcAuditFrom').value) {
+    trcSetAuditPeriod('today', document.querySelector('#trcTab-audit .trc-period-row .filter-btn'));
+  }
+}
+
+function trcPopulateFilterOptions() {
+  const truckSel = document.getElementById('trcTruck');
+  if (truckSel && truckSel.options.length <= 1) {
+    [...state.db.trucks].sort((a,b)=>a.reg.localeCompare(b.reg)).forEach(t=>{
+      const o=document.createElement('option'); o.value=t.id; o.textContent=t.reg; truckSel.appendChild(o);
+    });
+  }
+  const driverSel = document.getElementById('trcDriver');
+  if (driverSel && driverSel.options.length <= 1) {
+    [...state.db.drivers].sort((a,b)=>a.name.localeCompare(b.name)).forEach(d=>{
+      const o=document.createElement('option'); o.value=d.id; o.textContent=d.name; driverSel.appendChild(o);
+    });
+  }
+  const statusSel = document.getElementById('trcStatus');
+  if (statusSel && statusSel.options.length <= 1) {
+    TRIP_ALL_STATUSES.forEach(s=>{
+      const o=document.createElement('option'); o.value=s; o.textContent=s.replace('_',' '); statusSel.appendChild(o);
+    });
+  }
+  const workTypeSel = document.getElementById('trcWorkType');
+  if (workTypeSel && workTypeSel.options.length <= 1) {
+    [...new Set(state.db.trips.map(t=>t.workType))].sort().forEach(w=>{
+      const o=document.createElement('option'); o.value=w; o.textContent=w; workTypeSel.appendChild(o);
+    });
+  }
+  const auditUserSel = document.getElementById('trcAuditUser');
+  if (auditUserSel && auditUserSel.options.length <= 1) {
+    [...state.db.profiles].sort((a,b)=>a.username.localeCompare(b.username)).forEach(p=>{
+      const o=document.createElement('option'); o.value=p.username; o.textContent=`${p.name} (${p.username})`; auditUserSel.appendChild(o);
+    });
+  }
+}
+
+function trcPad(n) { return String(n).padStart(2,'0'); }
+function trcLocalInputValue(d) { return `${d.getFullYear()}-${trcPad(d.getMonth()+1)}-${trcPad(d.getDate())}T${trcPad(d.getHours())}:${trcPad(d.getMinutes())}`; }
+
+function trcSetPeriod(period, btn) {
+  if (btn) { document.querySelectorAll('#trcTab-trips .trc-period-row .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  trc.period = period;
+  if (period === 'custom') return; // leave from/to as-is for manual editing
+  const now = new Date();
+  let from;
+  if (period === 'hourly')       from = new Date(now.getTime() - 3600000);
+  else if (period === 'daily')   { from = new Date(now); from.setHours(0,0,0,0); }
+  else if (period === 'weekly')  { from = new Date(now); const day=(from.getDay()+6)%7; from.setDate(from.getDate()-day); from.setHours(0,0,0,0); }
+  else if (period === 'monthly') from = new Date(now.getFullYear(), now.getMonth(), 1);
+  else from = new Date(now.getTime() - 3600000);
+  document.getElementById('trcFrom').value = trcLocalInputValue(from);
+  document.getElementById('trcTo').value   = trcLocalInputValue(now);
+}
+
+function trcSetAuditPeriod(period, btn) {
+  if (btn) { document.querySelectorAll('#trcTab-audit .trc-period-row .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  trc.auditPeriod = period;
+  if (period === 'custom') return;
+  const now = new Date();
+  let from;
+  if (period === 'today')      { from = new Date(now); from.setHours(0,0,0,0); }
+  else if (period === 'week')  { from = new Date(now); const day=(from.getDay()+6)%7; from.setDate(from.getDate()-day); from.setHours(0,0,0,0); }
+  else if (period === 'month') from = new Date(now.getFullYear(), now.getMonth(), 1);
+  else from = new Date(2000,0,1); // 'all'
+  document.getElementById('trcAuditFrom').value = trcLocalInputValue(from);
+  document.getElementById('trcAuditTo').value   = trcLocalInputValue(now);
+}
+
+async function trcRunTripReport() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const fromVal   = document.getElementById('trcFrom').value;
+  const toVal     = document.getElementById('trcTo').value;
+  const truckId   = document.getElementById('trcTruck').value;
+  const driverId  = document.getElementById('trcDriver').value;
+  const status    = document.getElementById('trcStatus').value;
+  const workType  = document.getElementById('trcWorkType').value;
+
+  const btn = document.querySelector('#trcTab-trips .action-btn:not(.ghost)');
+  const origLabel = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = 'Querying Supabase…'; btn.disabled = true; }
+
+  try {
+    let q = supabase.from('trips').select('*');
+    if (fromVal)  q = q.gte('start_time', new Date(fromVal).toISOString());
+    if (toVal)    q = q.lte('start_time', new Date(toVal).toISOString());
+    if (truckId)  q = q.eq('truck_id', truckId);
+    if (driverId) q = q.eq('driver_id', driverId);
+    if (status)   q = q.eq('status', status);
+    if (workType) q = q.eq('work_type', workType);
+    q = q.order('start_time', { ascending: false }).limit(5000);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const rows = (data || []).map(tripFromRow);
+    trc.tripRows = rows;
+    trcRenderTripSummary(rows);
+    trcRenderTripTable(rows);
+    const csvBtn = document.getElementById('trcExportTripsBtn');
+    const jsonBtn = document.getElementById('trcExportTripsJsonBtn');
+    if (csvBtn) csvBtn.disabled = rows.length === 0;
+    if (jsonBtn) jsonBtn.disabled = rows.length === 0;
+    toast(`${rows.length} trip record(s) retrieved from Supabase`, 'success');
+    addAudit(state.profile.username, 'Trip Report Queried', `${rows.length} trips · ${trc.period}${fromVal ? ` · ${fromVal.replace('T',' ')} → ${toVal ? toVal.replace('T',' ') : 'now'}` : ''}`);
+  } catch (e) {
+    console.error('Trip report query failed:', e.message);
+    toast('Query failed — check network/Supabase', 'error');
+  } finally {
+    if (btn) { btn.textContent = origLabel; btn.disabled = false; }
+  }
+}
+
+function trcRenderTripSummary(rows) {
+  const el = document.getElementById('trcTripSummary');
+  if (!el) return;
+  if (!rows.length) {
+    el.className = '';
+    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📄</div><div class="empty-state-label">No trips match this query</div><div class="empty-state-sub">Adjust the date range or filters and run again</div></div>';
+    return;
+  }
+  const totalDist = rows.reduce((s,t)=>s+(Number(t.distance)||0), 0);
+  const completed = rows.filter(t=>t.status==='completed').length;
+  const active    = rows.filter(t=>t.status==='active').length;
+  const delayed   = rows.filter(t=>t.status==='delayed'||t.status==='breakdown').length;
+  el.className = 'kpi-row';
+  el.innerHTML = `${kpiCard('Total Trips', fmt(rows.length), '', 'kpi-gold')} ${kpiCard('Completed', fmt(completed), '', 'kpi-green')} ${kpiCard('Active', fmt(active), '', 'kpi-blue')} ${kpiCard('Delayed / Breakdown', fmt(delayed), '', 'kpi-red')} ${kpiCard('Total Distance', fmt(totalDist)+' km', '', 'kpi-orange')}`;
+}
+
+function trcRenderTripTable(rows) {
+  const meta = document.getElementById('trcTripMeta');
+  if (meta) meta.textContent = `${rows.length} record(s)${rows.length===5000 ? ' (capped at 5000 — narrow your range)' : ''}`;
+  const body = document.getElementById('trcTripBody');
+  if (!body) return;
+  body.innerHTML = rows.map(t=>`<tr onclick="showTripDetail('${t.id}')">
+    <td class="mono" style="color:var(--gold)">${t.container}</td>
+    <td>${truckName(t.truckId)}</td>
+    <td>${driverName(t.driverId)}</td>
+    <td>${t.workType}</td>
+    <td style="font-size:11px">${t.origin} → ${t.dest}</td>
+    <td>${sbadge(t.status)}</td>
+    <td>${t.priority ? sbadge(t.priority.toLowerCase()) : '—'}</td>
+    <td class="mono">${t.distance} km</td>
+    <td class="mono" style="font-size:10.5px">${fmtTime(t.startTime)} · ${fmtDate(t.startTime)}</td>
+    <td class="mono" style="font-size:10.5px">${fmtTime(t.eta)}</td>
+  </tr>`).join('') || '';
+}
+
+function trcExportTripsCSV() {
+  if (!trc.tripRows.length) return;
+  const headers = ['ID','Container','Type','Truck','Driver','Work Type','Origin','Destination','Shipping Line','Status','Priority','Distance (km)','Start Time','ETA','Reference'];
+  const lines = [headers.join(',')];
+  trc.tripRows.forEach(t=>{
+    lines.push([
+      t.id, t.container, t.ctype, truckName(t.truckId), driverName(t.driverId), t.workType,
+      t.origin, t.dest, lineName(t.shippingLine), t.status, t.priority, t.distance,
+      t.startTime, t.eta, t.ref,
+    ].map(csvEscape).join(','));
+  });
+  downloadTextFile(`gargo-trip-report-${Date.now()}.csv`, lines.join('\n'), 'text/csv');
+  addAudit(state.profile.username, 'Trip Report Exported', `${trc.tripRows.length} trips (CSV)`);
+  toast('Trip report exported', 'success');
+}
+
+function trcExportTripsJSON() {
+  if (!trc.tripRows.length) return;
+  downloadTextFile(`gargo-trip-report-${Date.now()}.json`, JSON.stringify(trc.tripRows, null, 2), 'application/json');
+  addAudit(state.profile.username, 'Trip Report Exported', `${trc.tripRows.length} trips (JSON)`);
+  toast('Trip report exported', 'success');
+}
+
+async function trcRunAuditQuery() {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const fromVal = document.getElementById('trcAuditFrom').value;
+  const toVal   = document.getElementById('trcAuditTo').value;
+  const user    = document.getElementById('trcAuditUser').value;
+  const search  = document.getElementById('trcAuditSearch').value.trim();
+
+  const btn = document.querySelector('#trcTab-audit .action-btn:not(.ghost)');
+  const origLabel = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = 'Querying Supabase…'; btn.disabled = true; }
+
+  try {
+    let q = supabase.from('audit_log').select('*');
+    if (fromVal) q = q.gte('time', new Date(fromVal).toISOString());
+    if (toVal)   q = q.lte('time', new Date(toVal).toISOString());
+    if (user)    q = q.eq('username', user);
+    if (search)  q = q.or(`action.ilike.%${search}%,detail.ilike.%${search}%`);
+    q = q.order('time', { ascending: false }).limit(2000);
+
+    const { data, error } = await q;
+    if (error) throw error;
+
+    const rows = (data || []).map(a=>({ id:a.id, user:a.username, action:a.action, detail:a.detail, time:a.time }));
+    trc.auditRows = rows;
+    trcRenderAuditSummary(rows);
+    trcRenderAuditTable(rows);
+    const csvBtn = document.getElementById('trcExportAuditBtn');
+    if (csvBtn) csvBtn.disabled = rows.length === 0;
+    toast(`${rows.length} audit record(s) retrieved from Supabase`, 'success');
+  } catch (e) {
+    console.error('Audit query failed:', e.message);
+    toast('Query failed — check network/Supabase', 'error');
+  } finally {
+    if (btn) { btn.textContent = origLabel; btn.disabled = false; }
+  }
+}
+
+function trcRenderAuditSummary(rows) {
+  const el = document.getElementById('trcAuditSummary');
+  if (!el) return;
+  if (!rows.length) {
+    el.className = '';
+    el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🗂</div><div class="empty-state-label">No audit entries match this query</div><div class="empty-state-sub">Widen the date range or clear filters and run again</div></div>';
+    return;
+  }
+  const users   = new Set(rows.map(r=>r.user)).size;
+  const actions = new Set(rows.map(r=>r.action)).size;
+  el.className = 'kpi-row';
+  el.innerHTML = `${kpiCard('Total Entries', fmt(rows.length), '', 'kpi-gold')} ${kpiCard('Distinct Users', fmt(users), '', 'kpi-blue')} ${kpiCard('Action Types', fmt(actions), '', 'kpi-orange')}`;
+}
+
+function trcRenderAuditTable(rows) {
+  const meta = document.getElementById('trcAuditMeta');
+  if (meta) meta.textContent = `${rows.length} record(s)${rows.length===2000 ? ' (capped at 2000 — narrow your range)' : ''}`;
+  const body = document.getElementById('trcAuditBody');
+  if (!body) return;
+  body.innerHTML = rows.map(a=>`<tr>
+    <td class="mono" style="font-size:10.5px;white-space:nowrap">${fmtTime(a.time)} · ${fmtDate(a.time)}</td>
+    <td>${a.user}</td>
+    <td style="font-weight:600;color:var(--text)">${a.action}</td>
+    <td style="color:var(--text-2)">${a.detail||''}</td>
+  </tr>`).join('');
+}
+
+function trcExportAuditCSV() {
+  if (!trc.auditRows.length) return;
+  const headers = ['Time','User','Action','Detail'];
+  const lines = [headers.join(',')];
+  trc.auditRows.forEach(a=>lines.push([a.time, a.user, a.action, a.detail].map(csvEscape).join(',')));
+  downloadTextFile(`gargo-audit-log-${Date.now()}.csv`, lines.join('\n'), 'text/csv');
+  addAudit(state.profile.username, 'Audit Log Exported', `${trc.auditRows.length} entries (CSV)`);
+  toast('Audit log exported', 'success');
+}
+
+/* ---- shared CSV/file-download helpers --------------------------- */
+function csvEscape(val) {
+  if (val === null || val === undefined) return '';
+  const s = String(val);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+
+function downloadTextFile(filename, content, mime) {
+  const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 /* ──────────────────────────────────────────────────────────────────
