@@ -1018,6 +1018,8 @@ function buildBadges() {
   set('badge-trucks',       db.trucks.filter(t=>t.status==='breakdown').length);
   set('badge-drivers',      db.drivers.filter(d=>d.status==='on_trip').length);
   set('badge-trips',        db.trips.filter(t=>t.status==='active').length);
+  set('badge-dispatch',     awaitingDispatchTrips().length);
+  set('badge-allocation',   awaitingDispatchTrips().length);
   set('badge-maintenance',  db.maintenance.filter(m=>m.status==='open').length);
   set('badge-shutout',      db.shutouts.filter(s=>s.status==='open').length);
   set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
@@ -1391,7 +1393,7 @@ function showTripDetail(id) {
   const gallery = Array.isArray(t.containerImages) && t.containerImages.length
     ? `<div style="margin-bottom:14px"><div class="fg" style="margin:0 0 6px"><label>Container Photos (${t.containerImages.length})</label></div><div class="container-img-grid">${t.containerImages.map(src=>`<div class="container-img-thumb view-only"><img src="${src}" onclick="window.open('${src}','_blank')" /></div>`).join('')}</div></div>`
     : '';
-  openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();showSection('dispatch',document.querySelector('[data-section=dispatch]'));loadTripIntoDispatchForm('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
+  openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();jumpToCompleteDispatch('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -1861,6 +1863,51 @@ function awaitingDispatchTrips() {
   return state.db.trips.filter(t => isTripLive(t) && (!t.truckId || !t.driverId));
 }
 
+// A trip can start needing a truck/driver from several places — an
+// imported Public Booking, a bulk-upload row with an unmatched
+// truck/driver, or a manual entry left half-filled. Whatever the
+// source, every place that surfaces "awaiting dispatch" work
+// (Dispatch Console, both Allocation tabs, sidebar/nav badges, and the
+// container dropdown) needs to reflect it immediately. Call this one
+// helper after anything changes the trips list instead of updating
+// each view by hand.
+function refreshAwaitingDispatchUI() {
+  buildBadges();
+  refreshContainerHistory();
+  if (document.getElementById('awaitingDispatchList')) renderAwaitingDispatch();
+  if (document.getElementById('allocQueue'))            renderAllocAuto();
+  if (document.getElementById('allocManualAwaitingList')) renderAllocAwaitingList('allocManualAwaitingList', 'allocManualAwaitingMeta');
+}
+
+// Renders the shared "awaiting dispatch" list markup into any target
+// container (used by both Allocation tabs so a dispatcher can match a
+// truck/driver to a waiting trip without leaving the Allocation
+// screen, then jump straight into the Dispatch Console to finish it).
+function renderAllocAwaitingList(targetId, metaId) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  const rows = awaitingDispatchTrips().sort((a,b)=> new Date(b.startTime)-new Date(a.startTime));
+  if (metaId) { const meta = document.getElementById(metaId); if (meta) meta.textContent = rows.length ? `${rows.length} awaiting` : ''; }
+  el.innerHTML = rows.map(t => `
+    <div class="dispatch-queue-item" style="cursor:default">
+      <div class="dqi-ref">${(t.container||'').slice(-7)}</div>
+      <div class="dqi-route">
+        <div style="font-size:12px;font-weight:600;color:var(--text)">${t.origin} → ${t.dest}</div>
+        <div style="font-size:10px;color:var(--text-3)">${t.bookingId ? 'From public booking' : 'Needs truck & driver'} · ${t.workType}</div>
+      </div>
+      <button class="modal-btn primary" onclick="jumpToCompleteDispatch('${t.id}')">Match &amp; Dispatch →</button>
+    </div>
+  `).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-icon">✅</div><div class="empty-state-label">Nothing awaiting dispatch</div></div>';
+}
+
+// Used from Allocation (either tab) or a Public Booking row to jump
+// straight into the Dispatch Console with a given trip pre-loaded into
+// the single official dispatch form.
+function jumpToCompleteDispatch(tripId) {
+  showSection('dispatch', document.querySelector('[data-section="dispatch"]'));
+  loadTripIntoDispatchForm(tripId);
+}
+
 function renderAwaitingDispatch() {
   const el = document.getElementById('awaitingDispatchList');
   const meta = document.getElementById('awaitingDispatchMeta');
@@ -2008,8 +2055,8 @@ function createDispatch() {
 
   clearContainerImgs();
   ['d_truck','d_driver','d_container','d_origin','d_dest','d_distance','d_ref','d_notes'].forEach(id=>{ const el=document.getElementById(id); if (el) el.value=''; });
-  refreshContainerHistory();
   renderDispatch();
+  refreshAwaitingDispatchUI();
 }
 
 function switchDispatchTab(tab, btn) {
@@ -2154,7 +2201,7 @@ function processBulkDispatch() {
   } else {
     toast(`${created} dispatches created`, 'success');
   }
-  refreshContainerHistory();
+  refreshAwaitingDispatchUI();
   document.getElementById('bulkDispatchPreview').style.display = 'none';
   renderDispatchQueue();
 }
@@ -2647,12 +2694,12 @@ function renderAllocation() { renderAllocAuto(); }
 
 function renderAllocAuto() {
   const db=state.db;
-  const avail   = db.trucks.filter(t=>t.status==='available').length;
-  const drivers = db.drivers.filter(d=>d.status==='available').length;
-  const pending = db.trips.filter(t=>t.status==='active').length;
-  document.getElementById('allocKpis').innerHTML= `${kpiCard('Available Trucks', avail, '', 'kpi-green')} ${kpiCard('Available Drivers', drivers, '', 'kpi-gold')} ${kpiCard('Active Dispatches', pending, '', 'kpi-blue')}`;
-  const queue=db.trips.filter(t=>t.status==='active').slice(0,5);
-  document.getElementById('allocQueue').innerHTML=queue.map(t=>`<div class="alloc-card"><div><div style="font-size:12px;font-weight:600;color:var(--text)">${t.container}</div><div style="font-size:10.5px;color:var(--text-3)">${t.origin}→${t.dest}</div></div>${sbadge(t.status)}</div>`).join('')||'<div style="padding:12px;color:var(--text-3);font-size:11px">No pending dispatches</div>';
+  const avail    = db.trucks.filter(t=>t.status==='available').length;
+  const drivers  = db.drivers.filter(d=>d.status==='available').length;
+  const awaiting = awaitingDispatchTrips().length;
+  const pending  = db.trips.filter(t=>t.status==='active').length;
+  document.getElementById('allocKpis').innerHTML= `${kpiCard('Available Trucks', avail, '', 'kpi-green')} ${kpiCard('Available Drivers', drivers, '', 'kpi-gold')} ${kpiCard('Awaiting Dispatch', awaiting, '', 'kpi-orange')} ${kpiCard('Active Dispatches', pending, '', 'kpi-blue')}`;
+  renderAllocAwaitingList('allocQueue', 'allocQueueMeta');
   document.getElementById('allocRules').innerHTML=db.allocationRules.map(r=>`<div class="alloc-rule"><div style="display:flex;justify-content:space-between;align-items:center"><div class="rule-name">${r.name}</div><div class="rule-weight">${r.weight}%</div></div><div class="rule-desc">${r.desc}</div></div>`).join('');
   document.getElementById('allocRecommendations').innerHTML='<div style="padding:16px;color:var(--text-3);font-size:11.5px">Run auto-allocation to generate recommendations</div>';
 }
@@ -2665,6 +2712,7 @@ function renderAllocManual() {
   fillSelect('ma_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.status}`]);
   fillSelect('ma_driver', state.db.drivers.filter(d=>d.status==='available'), d=>[d.id, d.name]);
   renderStatusOverridePanel();
+  renderAllocAwaitingList('allocManualAwaitingList', 'allocManualAwaitingMeta');
 }
 
 function renderStatusOverridePanel() {
@@ -2691,13 +2739,29 @@ function runAllocation() {
 }
 
 function applyAllocation(truckId, driverId) {
-  const t = state.db.trucks.find(t=>t.id===truckId);
-  const d = state.db.drivers.find(d=>d.id===driverId);
-  if (!t||!d) return;
-  t.driver = driverId; d.truckId = truckId;
+  const result = pairDriverTruck(truckId, driverId);
+  if (!result) { toast('Truck or driver not found', 'error'); return; }
+  const { t, d } = result;
   scheduleSave();
   addAudit(state.profile.username, 'Auto Allocation', `${t.reg} ← ${d.name}`);
   toast(`${d.name} assigned to ${t.reg}`, 'success');
+  renderAllocAuto();
+}
+
+// Single source of truth for pairing a driver with a truck, used by
+// both Auto-Allocation ("Assign") and Manual Allocation. Ensures the
+// pairing actually takes effect completely: it clears out any other
+// driver still pointing at this truck first, so a truck can never end
+// up claimed by two drivers at once (which would otherwise silently
+// leave stale data in the drivers table).
+function pairDriverTruck(truckId, driverId) {
+  const t = state.db.trucks.find(tr=>tr.id===truckId);
+  const d = state.db.drivers.find(dr=>dr.id===driverId);
+  if (!t || !d) return null;
+  state.db.drivers.forEach(other => { if (other.id !== d.id && other.truckId === truckId) other.truckId = null; });
+  t.driver = driverId;
+  d.truckId = truckId;
+  return { t, d };
 }
 
 function manualAssignDriverToTruck() {
@@ -2705,10 +2769,9 @@ function manualAssignDriverToTruck() {
   const driver = document.getElementById('ma_driver').value;
   const notes  = sanitize((document.getElementById('ma_notes')?.value||'').trim());
   if (!truck||!driver) { toast('Select truck and driver','error'); return; }
-  const t=state.db.trucks.find(t=>t.id===truck);
-  const d=state.db.drivers.find(d=>d.id===driver);
-  if(t) t.driver=driver;
-  if(d) d.truckId=truck;
+  const result = pairDriverTruck(truck, driver);
+  if (!result) { toast('Truck or driver not found', 'error'); return; }
+  const { t, d } = result;
 
   scheduleSave();
   addAudit(state.profile.username, 'Manual Assignment', `${t?.reg} ← ${d?.name}${notes?` — ${notes}`:''}`);
@@ -3381,11 +3444,18 @@ function populateSelects() {
 function refreshContainerHistory() {
   const dl = document.getElementById('containerHistory');
   if (!dl) return;
-  const set = new Set();
-  (state.db.trips||[]).forEach(t=>{ if (t.container) set.add(t.container); });
-  (state.db.shutouts||[]).forEach(s=>{ if (s.container) set.add(s.container); });
-  (state.db.interchange||[]).forEach(i=>{ if (i.container) set.add(i.container); });
-  dl.innerHTML = [...set].sort().map(c=>`<option value="${c}"></option>`).join('');
+  // Track where each container number came from so the dropdown can
+  // show it (e.g. "Public Booking", "Bulk Upload") — helps dispatchers
+  // pick the right one instead of typing blind. First source seen wins.
+  const labels = new Map();
+  const tag = (c, label) => { if (c && !labels.has(c)) labels.set(c, label); };
+  (state.db.trips||[]).forEach(t=>{
+    if (!t.container) return;
+    tag(t.container, t.bookingId ? 'Public Booking' : (t.notes && /bulk/i.test(t.notes) ? 'Bulk Upload' : 'Dispatch'));
+  });
+  (state.db.shutouts||[]).forEach(s=>{ tag(s.container, 'Shutout'); });
+  (state.db.interchange||[]).forEach(i=>{ tag(i.container, 'Interchange'); });
+  dl.innerHTML = [...labels.keys()].sort().map(c=>`<option value="${c}">${labels.get(c)}</option>`).join('');
 }
 
 /* ──────────────────────────────────────────────────────────────────
@@ -3509,20 +3579,31 @@ async function renderPublicBookings() {
     return;
   }
 
-  container.innerHTML = data.map(b => `
+  container.innerHTML = data.map(b => {
+    let importedAction = '';
+    if (b.status === 'imported') {
+      const trip = findTripByBookingId(b.id);
+      if (trip && (!trip.truckId || !trip.driverId)) {
+        importedAction = `<button class="modal-btn primary" onclick="jumpToCompleteDispatch('${trip.id}')">Complete Dispatch →</button>`;
+      } else if (trip) {
+        importedAction = `<button class="modal-btn ghost" onclick="showTripDetail('${trip.id}')">View Trip</button>`;
+      }
+    }
+    return `
     <div style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
       <div><strong>${sanitize(b.full_name)}</strong> (${sanitize(b.email)})</div>
       <div>Service: ${sanitize(b.service_type)}</div>
 <div>Container: ${sanitize(b.container) || 'Not provided'}</div>
 <div style="font-size:10px;color:var(--text-3);">Booking ID: ${b.id.slice(0,8)}</div>
       <div>Pickup: ${sanitize(b.pickup_location)} → Drop: ${sanitize(b.dropoff_location)}</div>
-      <div style="margin-top:8px;">
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <span class="sbadge s-${b.status}">${b.status}</span>
         ${b.status === 'pending' ? `<button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">Import to Fleet</button>` : ''}
+        ${importedAction}
         <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
       </div>
     </div>
-  `).join('');
+  `; }).join('');
 
   // Update badge
   const badge = document.getElementById('badge-publicbookings');
@@ -3531,6 +3612,13 @@ async function renderPublicBookings() {
     badge.textContent = pending || '';
     badge.style.display = pending ? 'inline' : 'none';
   }
+}
+
+// Locates the trip a given public booking was imported into (if any),
+// so the Public Bookings screen can offer a direct "Complete Dispatch"
+// or "View Trip" action on an already-imported row.
+function findTripByBookingId(bookingId) {
+  return state.db.trips.find(t => t.bookingId === bookingId);
 }
 
 async function importPublicBooking(bookingId) {
@@ -3602,8 +3690,7 @@ async function importPublicBooking(bookingId) {
 
   toast('Imported — awaiting dispatch (trip ' + trip.id.slice(-6) + ')', 'success');
   renderPublicBookings();
-  if (document.getElementById('awaitingDispatchList')) renderAwaitingDispatch();
-  buildBadges();
+  refreshAwaitingDispatchUI();
 }
 
 async function showPublicBookingDetail(id) {
