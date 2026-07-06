@@ -28,8 +28,8 @@ let state = {
   trackingActive    : false,  // true while this device is actively pushing GPS pings
   geoPermission     : 'unknown', // 'unknown' | 'prompt' | 'granted' | 'denied'
   lastGeoSend       : 0,      // throttle timestamp
-  trackingMap       : null,   // google.maps.Map instance (admin Live Tracking)
-  truckMarkers      : {},     // truckId -> google.maps.Marker
+  trackingMap       : null,   // L.Map instance (admin Live Tracking, Leaflet)
+  truckMarkers      : {},     // truckId -> L.Marker
   _gmapsLoading     : false,
   _gmapsCallbacks   : [],
   _trackingChannel  : null,   // supabase realtime channel for tracking_positions
@@ -1846,26 +1846,34 @@ function onDriverGeoError(err) {
   renderDutyBar();
 }
 
-// Reverse-geocodes via the Google Maps Geocoding REST API (uses the same
-// API key configured in Settings → Integration). Falls back to raw
-// coordinates if no key is set or the lookup fails, so tracking still
-// works even before Google Maps is configured.
-async function reverseGeocodeZone(lat, lng) {
-  const key = state.db.settings?.mapApiKey;
-  if (!key) return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-  try {
-    const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${encodeURIComponent(key)}`);
-    const data = await res.json();
-    if (data.status === 'OK' && data.results?.length) {
-      const comps = data.results[0].address_components || [];
-      const pick = comps.find(c => c.types.includes('sublocality') || c.types.includes('neighborhood'))
-                || comps.find(c => c.types.includes('locality'));
-      return pick ? pick.long_name : (data.results[0].formatted_address || '').split(',')[0] || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+// Reverse-geocodes via Nominatim (OpenStreetMap's free geocoder) — no API
+// key, no billing. Nominatim's usage policy asks for max ~1 request/second
+// across the whole app, so _nominatimQueue below chains every call and
+// spaces them out, no matter how many drivers are pinging at once. Falls
+// back to raw coordinates if the lookup fails, so tracking still works
+// even if the geocoder is briefly unreachable.
+let _nominatimQueue = Promise.resolve();
+function reverseGeocodeZone(lat, lng) {
+  const run = _nominatimQueue.then(async () => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&zoom=14&addressdetails=1`, {
+        headers: { 'Accept-Language': 'en' },
+      });
+      const data = await res.json();
+      const addr = data.address || {};
+      const pick = addr.suburb || addr.neighbourhood || addr.quarter || addr.city_district || addr.town || addr.city || addr.village;
+      return pick || (data.display_name || '').split(',')[0] || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    } catch (e) {
+      console.warn('Reverse geocode failed:', e);
+      return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    } finally {
+      // Space out requests by 1.1s regardless of how fast they resolve,
+      // to stay comfortably within Nominatim's fair-use limit.
+      await new Promise(r => setTimeout(r, 1100));
     }
-  } catch (e) {
-    console.warn('Reverse geocode failed:', e);
-  }
-  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  });
+  _nominatimQueue = run;
+  return run;
 }
 
 // Driver taps "Go Off Duty" / "Go On Duty". Off-duty immediately halts
@@ -3591,28 +3599,20 @@ function subscribeTrackingRealtime() {
     .subscribe();
 }
 
-/* ---- Google Maps: dynamic script loader ------------------------- */
+/* ---- Leaflet / OpenStreetMap: no API key, no dynamic script load ----
+   Leaflet is loaded up-front from index.html, so all we need to do is
+   wait for window.L to exist (it's synchronous in practice, but this
+   keeps the same callback shape the rest of the code expects). */
 function loadGoogleMapsScript(cb) {
-  const key = state.db.settings?.mapApiKey;
-  if (!key) { cb(new Error('no-key')); return; }
-  if (window.google && window.google.maps) { cb(null); return; }
-  if (state._gmapsLoading) { state._gmapsCallbacks.push(cb); return; }
-  state._gmapsLoading = true;
-  state._gmapsCallbacks = [cb];
-  window.__gmapsReady = () => {
-    state._gmapsLoading = false;
-    state._gmapsCallbacks.forEach(fn => fn(null));
-    state._gmapsCallbacks = [];
-  };
-  const s = document.createElement('script');
-  s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__gmapsReady`;
-  s.async = true;
-  s.onerror = () => {
-    state._gmapsLoading = false;
-    state._gmapsCallbacks.forEach(fn => fn(new Error('load-failed')));
-    state._gmapsCallbacks = [];
-  };
-  document.head.appendChild(s);
+  if (window.L) { cb(null); return; }
+  // Leaflet failed to load (e.g. CDN blocked) — retry a couple of times
+  // then give up gracefully.
+  let tries = 0;
+  const iv = setInterval(() => {
+    tries++;
+    if (window.L) { clearInterval(iv); cb(null); }
+    else if (tries > 20) { clearInterval(iv); cb(new Error('load-failed')); }
+  }, 150);
 }
 
 function initTrackingMap() {
@@ -3621,30 +3621,28 @@ function initTrackingMap() {
   if (state.trackingMap) { updateTrackingMarkers(); return; }
   loadGoogleMapsScript((err) => {
     if (err) {
-      canvas.innerHTML = `<div class="tracking-map-placeholder"><div style="font-family:var(--font-brand);font-size:20px;color:var(--gold);margin-bottom:8px">GARGO</div><div style="font-size:12px;color:var(--text-2);max-width:380px;line-height:1.6">Add a Google Maps API key in Settings → Integration Status to enable the live interactive map. Vehicle data will still populate the lists on the right.</div></div>`;
+      canvas.innerHTML = `<div class="tracking-map-placeholder"><div style="font-family:var(--font-brand);font-size:20px;color:var(--gold);margin-bottom:8px">GARGO</div><div style="font-size:12px;color:var(--text-2);max-width:380px;line-height:1.6">Map failed to load — check your internet connection. Vehicle data will still populate the lists on the right.</div></div>`;
       return;
     }
     canvas.innerHTML = '';
-    state.trackingMap = new google.maps.Map(canvas, {
-      center: { lat: -4.0435, lng: 39.6682 }, // Mombasa
+    state.trackingMap = L.map(canvas, {
+      center: [-4.0435, 39.6682], // Mombasa
       zoom: 12,
-      disableDefaultUI: false,
-      styles: [
-        { elementType: 'geometry', stylers: [{ color: '#1a1a1a' }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a1a' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: '#8a8a8a' }] },
-        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2a2a2a' }] },
-        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1b2a' }] },
-        { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-      ],
     });
+    // CARTO's free "dark matter" tiles (no key) to match the app's dark theme.
+    // Falls back automatically to plain OpenStreetMap tiles if this ever 404s.
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      maxZoom: 19,
+      subdomains: 'abcd',
+    }).addTo(state.trackingMap);
     state.truckMarkers = {};
     updateTrackingMarkers();
   });
 }
 
 function updateTrackingMarkers() {
-  if (!state.trackingMap || !window.google) return;
+  if (!state.trackingMap || !window.L) return;
   const pos = state.db.trackingPositions || {};
   const seen = new Set();
   Object.entries(pos).forEach(([truckId, p]) => {
@@ -3652,39 +3650,32 @@ function updateTrackingMarkers() {
     const truck = state.db.trucks.find(t => t.id === truckId);
     const label = truck?.reg || truckId;
     const isMoving = p.speed > 0;
-    const icon = {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 8,
-      fillColor: isMoving ? '#3ecf6e' : '#8b8b8b',
-      fillOpacity: 1,
-      strokeColor: '#0b0b0b',
-      strokeWeight: 2,
-    };
+    const dotColor = isMoving ? '#3ecf6e' : '#8b8b8b';
+    const icon = L.divIcon({
+      className: 'truck-marker',
+      html: `<div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="width:14px;height:14px;border-radius:50%;background:${dotColor};border:2px solid #0b0b0b;box-shadow:0 0 0 1px rgba(255,255,255,.15)"></div><div style="font-size:9px;font-weight:700;color:#fff;background:rgba(11,11,11,.75);padding:1px 5px;border-radius:3px;white-space:nowrap">${label}</div></div>`,
+      iconSize: [60, 30],
+      iconAnchor: [7, 7],
+    });
     let marker = state.truckMarkers[truckId];
     if (!marker) {
-      marker = new google.maps.Marker({
-        position: { lat: p.lat, lng: p.lng },
-        map: state.trackingMap,
-        icon,
-        label: { text: label, color: '#fff', fontSize: '9px', fontWeight: '700' },
-      });
-      marker.infoWindow = new google.maps.InfoWindow();
-      marker.addListener('click', () => {
+      marker = L.marker([p.lat, p.lng], { icon }).addTo(state.trackingMap);
+      marker.bindPopup('');
+      marker.on('click', () => {
         const cur = state.db.trackingPositions[truckId];
         if (!cur) return;
-        marker.infoWindow.setContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${timeAgo(cur.lastUpdate)}</span></div>`);
-        marker.infoWindow.open(state.trackingMap, marker);
+        marker.setPopupContent(`<div style="font-family:sans-serif;font-size:12px;color:#111"><b>${label}</b><br>${cur.zone}<br>${cur.speed} km/h · ${cur.heading}<br><span style="color:#888;font-size:10px">${timeAgo(cur.lastUpdate)}</span></div>`);
       });
       state.truckMarkers[truckId] = marker;
     } else {
-      marker.setPosition({ lat: p.lat, lng: p.lng });
+      marker.setLatLng([p.lat, p.lng]);
       marker.setIcon(icon);
     }
   });
   // A truck disappears from trackingPositions the instant its driver goes
   // off duty (see stopDriverTracking) — drop its marker immediately too.
   Object.keys(state.truckMarkers).forEach(id => {
-    if (!seen.has(id)) { state.truckMarkers[id].setMap(null); delete state.truckMarkers[id]; }
+    if (!seen.has(id)) { state.trackingMap.removeLayer(state.truckMarkers[id]); delete state.truckMarkers[id]; }
   });
 }
 
@@ -3786,28 +3777,10 @@ function renderSettings() {
   const bk = state.db.settings?.backupDate;
   document.getElementById('lastBackup').textContent = bk ? fmtDate(bk) : 'Never';
 
-  const keySet = !!(state.db.settings?.mapApiKey);
-  const gmStatus = document.getElementById('gmapsStatusVal');
-  if (gmStatus) { gmStatus.textContent = keySet ? 'Connected' : 'Not configured'; gmStatus.style.color = keySet ? 'var(--green)' : 'var(--amber)'; }
   const gpsStatus = document.getElementById('gpsStatusVal');
   if (gpsStatus) { gpsStatus.textContent = 'Live · Driver GPS'; gpsStatus.style.color = 'var(--green)'; }
-  const input = document.getElementById('set_mapApiKey');
-  if (input && document.activeElement !== input) input.value = state.db.settings?.mapApiKey || '';
 }
 
-// Admin-only: saves the Google Maps API key used by both the Live
-// Tracking map (Maps JavaScript API) and driver-side reverse geocoding
-// (Geocoding API) — enable both APIs for this key in Google Cloud Console.
-function saveMapApiKey() {
-  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
-  const val = document.getElementById('set_mapApiKey').value.trim();
-  state.db.settings.mapApiKey = val;
-  scheduleSave();
-  addAudit(state.profile.username, 'Settings Updated', `Google Maps API key ${val ? 'configured' : 'cleared'}`);
-  toast(val ? 'Google Maps API key saved' : 'Google Maps API key cleared', 'success');
-  state.trackingMap = null; // force the map to re-init with the new key next time it's opened
-  renderSettings();
-}
 
 function requireSettingsVault() {
   if (state.settingsUnlocked) { showAdminSection('settings', document.getElementById('adminBtn-settings')); return; }
