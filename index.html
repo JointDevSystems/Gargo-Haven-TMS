@@ -416,12 +416,26 @@
                                 <button class="filter-btn" onclick="switchDispatchTab('bulk',this)">Bulk Upload</button>
                             </div>
                         </div>
+                        <div class="ops-notice" style="margin-bottom:14px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            Dispatch Console is the single place trip details get finalised — new manual orders, bulk uploads, and imported Public Bookings all get their truck, driver, and container details completed here. Allocation only pairs a driver with a truck.
+                        </div>
                         <!-- Single Dispatch Tab -->
                         <div id="dispatchTabSingle">
+                            <div class="panel" id="dispatchAwaitingPanel" style="margin-bottom:14px">
+                                <div class="panel-head"><span class="panel-title">Awaiting Dispatch</span><span class="panel-meta" id="awaitingDispatchMeta"></span></div>
+                                <div id="awaitingDispatchList"></div>
+                            </div>
                             <div class="dispatch-layout">
                                 <div class="form-card">
-                                    <div class="form-card-head">New Dispatch Order</div>
+                                    <div class="form-card-head" style="display:flex;justify-content:space-between;align-items:center">
+                                        <span>New Dispatch Order</span>
+                                    </div>
                                     <div class="form-card-body">
+                                        <div class="ops-notice" id="dispatchEditBanner" style="display:none;margin-bottom:12px;justify-content:space-between;align-items:center;gap:8px">
+                                            <span>Completing an awaiting-dispatch trip — pick a truck &amp; driver and confirm details below.</span>
+                                            <button class="pill" style="font-size:10px" onclick="cancelDispatchEdit()">✕ Cancel</button>
+                                        </div>
                                         <div class="form-row-2">
                                             <div class="fg"><label>Truck</label><select id="d_truck"></select></div>
                                             <div class="fg"><label>Driver</label><select id="d_driver"></select></div>
@@ -459,20 +473,20 @@
                                         </div>
                                         <div class="fg"><label>Client Reference</label><input id="d_ref" placeholder="BL / Booking ref" /></div>
                                         <div class="fg"><label>Notes</label><textarea id="d_notes" rows="2" placeholder="Special instructions…"></textarea></div>
-                                        <!-- Container Image Upload -->
+                                        <!-- Container Image Upload (multiple) -->
                                         <div class="fg">
-                                            <label>Container Image <span class="label-optional">(optional)</span></label>
+                                            <label>Container Photos <span class="label-optional">(optional, multiple allowed)</span></label>
                                             <div class="file-upload-area" id="containerImgUpload" onclick="document.getElementById('d_container_img').click()">
                                                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                                <span id="containerImgLabel">Upload container photo</span>
+                                                <span id="containerImgLabel">Upload container photos</span>
                                             </div>
-                                            <input type="file" id="d_container_img" accept="image/*" style="display:none" onchange="previewContainerImg(event)" />
+                                            <input type="file" id="d_container_img" accept="image/*" multiple style="display:none" onchange="previewContainerImgs(event)" />
                                         </div>
                                         <div id="containerImgPreview" style="display:none;margin-bottom:10px">
-                                            <img id="containerImgThumb" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;border:1px solid var(--border)" />
-                                            <button class="pill" style="margin-top:6px;font-size:10px" onclick="clearContainerImg()">✕ Remove image</button>
+                                            <div class="container-img-grid" id="containerImgGrid"></div>
+                                            <button class="pill" style="margin-top:6px;font-size:10px" onclick="clearContainerImgs()">✕ Remove all</button>
                                         </div>
-                                        <button class="submit-btn" onclick="createDispatch()">Create Dispatch Order →</button>
+                                        <button class="submit-btn" id="dispatchSubmitBtn" onclick="createDispatch()">Create Dispatch Order →</button>
                                     </div>
                                 </div>
                                 <div id="dispatchQueue"></div>
@@ -714,31 +728,28 @@
                                 <div id="allocRecommendations"></div>
                             </div>
                         </div>
-                        <!-- Manual Allocation -->
+                        <!-- Manual Allocation — driver ↔ truck pairing ONLY. Trip and
+                             container details are the Dispatch Console's job (see the
+                             Dispatch section notice + Awaiting Dispatch queue). -->
                         <div id="allocTabManual" style="display:none">
+                            <div class="ops-notice" style="margin-bottom:14px">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                This screen only pairs a driver with a truck. Trip details — container, route, work type, photos — are filled in from the Dispatch Console, which also picks up trucks/drivers you assign here.
+                            </div>
                             <div class="two-col-grid">
                                 <div class="form-card">
                                     <div class="form-card-head">Assign Driver to Truck</div>
                                     <div class="form-card-body">
                                         <div class="fg"><label>Select Truck</label><select id="ma_truck"></select></div>
                                         <div class="fg"><label>Select Driver</label><select id="ma_driver"></select></div>
-                                        <div class="fg"><label>Apply to Active Trip <span class="label-optional">(optional)</span></label><select id="ma_assign_trip"></select></div>
                                         <div class="fg"><label>Notes</label><input id="ma_notes" placeholder="Assignment notes…" /></div>
                                         <button class="submit-btn" onclick="manualAssignDriverToTruck()">Assign Driver to Truck →</button>
                                     </div>
                                 </div>
-                                <div class="form-card">
-                                    <div class="form-card-head">Assign Container to Trip</div>
-                                    <div class="form-card-body">
-                                        <div class="fg"><label>Active Trip</label><select id="ma_trip"></select></div>
-                                        <div class="fg"><label>Container Number</label><select id="ma_container"></select><div style="font-size:9.5px;color:var(--text-3);margin-top:4px">Only containers already dispatched appear here — add new containers from Dispatch first.</div></div>
-                                        <div class="fg"><label>Container Type</label>
-                                            <select id="ma_ctype">
-                                                <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
-                                                <option>20ft Reefer</option><option>40ft Reefer</option><option>Flat Rack</option><option>Tank</option>
-                                            </select>
-                                        </div>
-                                        <button class="submit-btn" onclick="manualAssignContainer()">Assign Container →</button>
+                                <div class="panel">
+                                    <div class="panel-head"><span class="panel-title">Awaiting Dispatch</span></div>
+                                    <div class="ops-notice" style="margin:0">
+                                        Trips waiting on a truck/driver — including containers imported from Public Bookings — show up in the Dispatch Console's Awaiting Dispatch queue, not here. <a href="#" onclick="showSection('dispatch',document.querySelector('[data-section=dispatch]'));return false" style="color:var(--gold)">Open Dispatch Console →</a>
                                     </div>
                                 </div>
                             </div>
