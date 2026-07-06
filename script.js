@@ -2966,7 +2966,7 @@ function reportRow(label, val) {
 
 /* ──────────────────────────────────────────────────────────────────
    § 24b  TRIP REPORTS & AUDIT CENTRE  (Admin only)
-   Every report/query here hits Supabase live rather than the cached
+   Every report/query here hits the live database rather than the cached
    in-memory state.db, so results always reflect the current server
    data — including anything written by other sessions/devices.
 ────────────────────────────────────────────────────────────────── */
@@ -3068,7 +3068,7 @@ async function trcRunTripReport() {
 
   const btn = document.querySelector('#trcTab-trips .action-btn:not(.ghost)');
   const origLabel = btn ? btn.textContent : '';
-  if (btn) { btn.textContent = 'Querying Supabase…'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Running…'; btn.disabled = true; }
 
   try {
     let q = supabase.from('trips').select('*');
@@ -3091,11 +3091,11 @@ async function trcRunTripReport() {
     const jsonBtn = document.getElementById('trcExportTripsJsonBtn');
     if (csvBtn) csvBtn.disabled = rows.length === 0;
     if (jsonBtn) jsonBtn.disabled = rows.length === 0;
-    toast(`${rows.length} trip record(s) retrieved from Supabase`, 'success');
+    toast(`${rows.length} trip record(s) retrieved`, 'success');
     addAudit(state.profile.username, 'Trip Report Queried', `${rows.length} trips · ${trc.period}${fromVal ? ` · ${fromVal.replace('T',' ')} → ${toVal ? toVal.replace('T',' ') : 'now'}` : ''}`);
   } catch (e) {
     console.error('Trip report query failed:', e.message);
-    toast('Query failed — check network/Supabase', 'error');
+    toast('Query failed — check your connection', 'error');
   } finally {
     if (btn) { btn.textContent = origLabel; btn.disabled = false; }
   }
@@ -3168,7 +3168,7 @@ async function trcRunAuditQuery() {
 
   const btn = document.querySelector('#trcTab-audit .action-btn:not(.ghost)');
   const origLabel = btn ? btn.textContent : '';
-  if (btn) { btn.textContent = 'Querying Supabase…'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Running…'; btn.disabled = true; }
 
   try {
     let q = supabase.from('audit_log').select('*');
@@ -3187,10 +3187,10 @@ async function trcRunAuditQuery() {
     trcRenderAuditTable(rows);
     const csvBtn = document.getElementById('trcExportAuditBtn');
     if (csvBtn) csvBtn.disabled = rows.length === 0;
-    toast(`${rows.length} audit record(s) retrieved from Supabase`, 'success');
+    toast(`${rows.length} audit record(s) retrieved`, 'success');
   } catch (e) {
     console.error('Audit query failed:', e.message);
-    toast('Query failed — check network/Supabase', 'error');
+    toast('Query failed — check your connection', 'error');
   } finally {
     if (btn) { btn.textContent = origLabel; btn.disabled = false; }
   }
