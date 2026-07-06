@@ -1443,13 +1443,23 @@ function canUpdateTripStatus(t) {
 // behaviour never diverges between roles. Returns {ok:true, old} on
 // success, or {ok:false, reason} on rejection so the caller can show
 // an accurate message instead of silently doing nothing.
-function applyTripStatus(t, status, actorLabel) {
+async function applyTripStatus(t, status, actorLabel) {
   if (!canUpdateTripStatus(t)) return { ok:false, reason:'permission' };
   if (!canTransitionTripStatus(t.status, status)) return { ok:false, reason:'transition', from:t.status };
+
   const old = t.status;
+  const truck  = state.db.trucks.find(tr=>tr.id===t.truckId);
+  const driver = state.db.drivers.find(d=>d.id===t.driverId);
+  // Snapshot so a failed write can be rolled back cleanly instead of
+  // leaving the UI showing a status that never actually made it to
+  // Supabase (which is exactly what made trips "revert" on refresh).
+  const truckSnapshot  = truck  ? { ...truck }  : null;
+  const driverSnapshot = driver ? { ...driver } : null;
+
   t.status = status;
+
+  let newMaintenanceTicket = null;
   if (status === 'breakdown') {
-    const truck = state.db.trucks.find(tr=>tr.id===t.truckId);
     if (truck) truck.status = 'breakdown';
     // Open (or reuse) a critical maintenance ticket so the breakdown shows
     // up in Maintenance + the alerts feed. Reports coming from a driver in
@@ -1458,25 +1468,60 @@ function applyTripStatus(t, status, actorLabel) {
     if (existing) {
       existing.reportedByDriver = existing.reportedByDriver || isDriver();
     } else {
-      state.db.maintenance.push({
+      newMaintenanceTicket = {
         id: uid('MNT'), truckId: t.truckId, type:'Breakdown',
         desc: `Breakdown reported on trip ${t.container} (${t.origin} → ${t.dest}).`,
         priority:'critical', status:'open', date:new Date().toISOString(),
         cost:0, tech:'', resolvedDate:null, reportedByDriver: isDriver(),
-      });
+      };
+      state.db.maintenance.push(newMaintenanceTicket);
     }
-    buildAlerts();
   }
   if (status === 'completed') {
-    const truck = state.db.trucks.find(tr=>tr.id===t.truckId);
-    const driver= state.db.drivers.find(d=>d.id===t.driverId);
     if (truck && truck.status ==='on_trip')  truck.status  = 'available';
     if (driver && driver.status==='on_trip')  driver.status = 'available';
     if (driver) { driver.load = null; driver.tripsToday++; }
   }
-  scheduleSave();
+
+  // Persist immediately and directly, instead of relying only on the
+  // generic debounced scheduleSave()/saveDB(), which re-upserts every row
+  // of every table 300ms later and only console.errors on failure — the
+  // UI had already told the user "success" by then regardless of whether
+  // the write actually landed. Here we write just the rows this change
+  // touched and WAIT for confirmation before reporting success upward.
+  try {
+    const writes = [ supabase.from('trips').upsert(tripToRow(t)) ];
+    if (truck)  writes.push(supabase.from('trucks').upsert(truckToRow(truck)));
+    if (driver) writes.push(supabase.from('drivers').upsert(driverToRow(driver)));
+    const results = await Promise.all(writes);
+    const failed = results.find(r => r && r.error);
+    if (failed) throw failed.error;
+    if (newMaintenanceTicket) {
+      const { error: mErr } = await supabase.from('maintenance').insert(maintToRow(newMaintenanceTicket));
+      if (mErr) throw mErr;
+    }
+  } catch (e) {
+    console.error('Trip status save failed:', e && e.message);
+    // Roll back the optimistic local change so in-memory state matches
+    // what's actually in the database. Without this, the app kept showing
+    // "completed" locally until the next reload silently reverted it.
+    t.status = old;
+    if (truck  && truckSnapshot)  Object.assign(truck,  truckSnapshot);
+    if (driver && driverSnapshot) Object.assign(driver, driverSnapshot);
+    if (newMaintenanceTicket) {
+      const idx = state.db.maintenance.indexOf(newMaintenanceTicket);
+      if (idx > -1) state.db.maintenance.splice(idx, 1);
+    }
+    buildBadges();
+    return { ok:false, reason:'save', error:e };
+  }
+
+  if (status === 'breakdown') buildAlerts();
   buildBadges();
   addAudit(actorLabel, 'Trip Status Update', `${t.container} ${old} → ${status}`);
+  // Background sync for anything else that may be pending elsewhere in
+  // the app — the change that matters here is already safely persisted.
+  scheduleSave();
   return { ok:true, old, status };
 }
 
@@ -1484,14 +1529,17 @@ function applyTripStatus(t, status, actorLabel) {
 // trip, though the driver portal normally uses driverAdvanceTrip
 // instead). Enforces the same forward-only rule for everyone — there
 // is no "admin override" path that can move a trip backwards.
-function quickSetTripStatus(id, status) {
+async function quickSetTripStatus(id, status) {
   const t = state.db.trips.find(t=>t.id===id);
   if (!t) { toast('Trip not found', 'error'); return; }
   if (!canUpdateTripStatus(t)) { toast('You do not have permission to update this trip', 'error'); return; }
-  const res = applyTripStatus(t, status, state.profile.username);
+  toast('Saving…', 'info', 1200);
+  const res = await applyTripStatus(t, status, state.profile.username);
   if (!res.ok) {
     if (res.reason === 'transition') {
       toast(`Cannot change status from "${res.from.replace('_',' ')}" to "${status.replace('_',' ')}" — trips can only move forward`, 'error');
+    } else if (res.reason === 'save') {
+      toast('Could not save this update — check your connection and try again', 'error', 4000);
     } else {
       toast('You do not have permission to update this trip', 'error');
     }
@@ -1529,6 +1577,7 @@ function renderDriverPortal() {
   body.innerHTML = `
     <div class="filter-row" style="margin-bottom:14px;flex-wrap:wrap">
       <button class="filter-btn${_dpTab==='trip'?' active':''}" onclick="dpSwitchTab('trip')">My Trip</button>
+      <button class="filter-btn${_dpTab==='completed'?' active':''}" onclick="dpSwitchTab('completed')">Completed Trips</button>
       <button class="filter-btn${_dpTab==='fuel'?' active':''}" onclick="dpSwitchTab('fuel')">Fuel Log</button>
       <button class="filter-btn${_dpTab==='requisitions'?' active':''}" onclick="dpSwitchTab('requisitions')">Requisitions</button>
       <button class="filter-btn${_dpTab==='workshop'?' active':''}" onclick="dpSwitchTab('workshop')">Workshop</button>
@@ -1545,6 +1594,7 @@ function dpRenderTab(driver) {
   const el = document.getElementById('dp_tabBody');
   if (!el) return;
   if (_dpTab === 'trip')          return dpRenderTripTab(el, driver);
+  if (_dpTab === 'completed')     return dpRenderCompletedTripsTab(el, driver);
   if (_dpTab === 'fuel')          return dpRenderFuelTab(el, driver);
   if (_dpTab === 'requisitions')  return dpRenderReqTab(el, driver);
   if (_dpTab === 'workshop')      return dpRenderWorkshopTab(el, driver);
@@ -1587,22 +1637,46 @@ function dpRenderTripTab(el, driver) {
   `;
 }
 
-function driverAdvanceTrip(tripId, status) {
+async function driverAdvanceTrip(tripId, status) {
   const driver = myDriverRecord();
   const t = state.db.trips.find(tr=>tr.id===tripId);
   if (!driver || !t || t.driverId !== driver.id) { toast('Not authorized for this trip', 'error'); return; }
   if (!DRIVER_TRIP_STEPS.includes(status)) { toast('Invalid status', 'error'); return; }
-  const res = applyTripStatus(t, status, state.profile.username);
+  toast('Saving…', 'info', 1200);
+  const res = await applyTripStatus(t, status, state.profile.username);
   if (!res.ok) {
     if (res.reason === 'transition') {
       toast(`Cannot change status from "${res.from.replace('_',' ')}" to "${status.replace('_',' ')}" — trips can only move forward`, 'error');
+    } else if (res.reason === 'save') {
+      toast('Could not save this update — check your connection and try again', 'error', 4000);
     } else {
       toast('Not authorized for this trip', 'error');
     }
+    renderDriverPortal();
     return;
   }
   toast(status==='breakdown' ? 'Breakdown reported — dispatch notified' : `Trip updated to ${status.replace('_',' ')}`, status==='breakdown'?'error':'success');
   renderDriverPortal();
+}
+
+/* ── Completed Trips tab ────────────────────────────────────────── */
+function dpRenderCompletedTripsTab(el, driver) {
+  const trips = state.db.trips
+    .filter(t=>t.driverId===driver.id && t.status==='completed')
+    .sort((a,b)=>new Date(b.eta)-new Date(a.eta));
+
+  el.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">My Completed Trips</span><span class="panel-meta">${trips.length} total</span></div>
+      <div class="table-wrap"><table class="data-table">
+        <thead><tr><th>Container</th><th>Route</th><th>Type</th><th>Distance</th><th>Completed</th><th>Reference</th></tr></thead>
+        <tbody>
+          ${trips.length ? trips.map(t=>`<tr onclick="showTripDetail('${t.id}')" style="cursor:pointer"><td class="mono" style="color:var(--gold)">${t.container}</td><td>${t.origin} → ${t.dest}</td><td>${t.ctype}</td><td>${t.distance}km</td><td>${fmtDate(t.eta)}</td><td class="mono" style="font-size:10px;color:var(--text-3)">${t.ref}</td></tr>`).join('')
+            : `<tr><td colspan="6" class="empty-td">No completed trips yet</td></tr>`}
+        </tbody>
+      </table></div>
+    </div>
+  `;
 }
 
 // Standalone breakdown report — not tied to an active trip. Opens a critical
@@ -3000,12 +3074,7 @@ async function saveUser() {
   if(!validateEmail(email)) { toast('Invalid email format','error'); return; }
   if(state.db.profiles.some(u=>u.username===user)) { toast('Username taken','error'); return; }
   
-  // In production, this would call a Supabase Edge Function to create the
-  // auth user + a matching profiles row. The real `profiles` table has a
-  // foreign key to auth.users, so we can't insert a usable row from the
-  // client — this stays a local, session-only preview until that user is
-  // actually invited via the Supabase Dashboard (it will disappear on next
-  // reload, once `profiles` is refetched from Supabase).
+ 
   state.db.profiles.push({
     id:uid('USR'), name, username:user,
     email: email,
