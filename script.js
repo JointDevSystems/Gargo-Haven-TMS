@@ -26,6 +26,7 @@ let state = {
   // Live GPS tracking (driver-side geolocation + admin-side map)
   geoWatchId        : null,   // navigator.geolocation.watchPosition handle
   trackingActive    : false,  // true while this device is actively pushing GPS pings
+  geoPermission     : 'unknown', // 'unknown' | 'prompt' | 'granted' | 'denied'
   lastGeoSend       : 0,      // throttle timestamp
   trackingMap       : null,   // google.maps.Map instance (admin Live Tracking)
   truckMarkers      : {},     // truckId -> google.maps.Marker
@@ -1587,7 +1588,13 @@ function renderDriverPortal() {
 
   // Live GPS tracking follows duty status automatically: on duty + truck
   // assigned => tracking runs; off duty (or suspended) => tracking stops.
-  if (driverShouldTrack(driver)) startDriverTracking(); else stopDriverTracking();
+  // We check permission state first so we know whether to just start
+  // silently (already granted) or show an explicit "enable" CTA instead.
+  checkGeoPermission().then(() => {
+    if (driverShouldTrack(driver) && state.geoPermission !== 'denied') startDriverTracking();
+    else if (!driverShouldTrack(driver)) stopDriverTracking();
+    renderDutyBar();
+  });
   renderDutyBar();
 
   body.innerHTML = `
@@ -1715,11 +1722,61 @@ function driverShouldTrack(driver) {
   return !!(driver && driver.truckId && driver.status !== 'off_duty' && driver.status !== 'suspended');
 }
 
+// Checks (and watches) the browser's location permission state so the duty
+// bar can show the right thing: a "grant access" prompt, a live indicator,
+// or a clear "blocked — here's how to fix it" message. The Permissions API
+// isn't supported everywhere (notably iOS Safari), so this degrades to
+// 'unknown' there and we just rely on the getCurrentPosition/watchPosition
+// callbacks themselves to tell us what happened.
+async function checkGeoPermission() {
+  if (!navigator.permissions?.query) { state.geoPermission = 'unknown'; return; }
+  try {
+    const status = await navigator.permissions.query({ name: 'geolocation' });
+    state.geoPermission = status.state;
+    if (!state._geoPermWatched) {
+      state._geoPermWatched = true;
+      status.onchange = () => {
+        state.geoPermission = status.state;
+        const driver = myDriverRecord();
+        if (status.state === 'granted' && driverShouldTrack(driver)) startDriverTracking();
+        if (status.state === 'denied') stopDriverTracking();
+        renderDutyBar();
+      };
+    }
+  } catch {
+    state.geoPermission = 'unknown';
+  }
+}
+
+// The explicit "Enable Location Tracking" button in the duty bar. Firing
+// geolocation from a direct tap (rather than only automatically on page
+// load) is what reliably triggers the native permission prompt on every
+// platform, including iOS home-screen apps.
+function requestLocationAccess() {
+  const driver = myDriverRecord();
+  if (!driverShouldTrack(driver)) return;
+  if (!navigator.geolocation) { toast('This device does not support GPS location', 'error'); return; }
+  toast('Requesting location access…', 'info', 1500);
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      state.geoPermission = 'granted';
+      onDriverPosition(pos);
+      startDriverTracking();
+    },
+    (err) => {
+      if (err.code === err.PERMISSION_DENIED) state.geoPermission = 'denied';
+      onDriverGeoError(err);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+
 function startDriverTracking() {
   const driver = myDriverRecord();
   if (!driverShouldTrack(driver)) { stopDriverTracking(); return; }
   if (state.geoWatchId != null) return; // already running
   if (!navigator.geolocation) { toast('This device does not support GPS location', 'error'); return; }
+  if (state.geoPermission === 'denied') { renderDutyBar(); return; } // don't spam the prompt if already blocked
   state.geoWatchId = navigator.geolocation.watchPosition(onDriverPosition, onDriverGeoError, {
     enableHighAccuracy: true, maximumAge: 5000, timeout: 20000,
   });
@@ -1783,7 +1840,7 @@ async function onDriverPosition(pos) {
 function onDriverGeoError(err) {
   state.trackingActive = false;
   let msg = 'GPS signal lost — retrying…';
-  if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied — enable location access for this site to allow tracking';
+  if (err.code === err.PERMISSION_DENIED) { msg = 'Location permission denied — enable location access to allow tracking'; state.geoPermission = 'denied'; }
   else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Location unavailable — check your device GPS/network';
   toast(msg, 'error', 4500);
   renderDutyBar();
@@ -1854,11 +1911,17 @@ function renderDutyBar() {
   const onDuty = driver.status !== 'off_duty' && driver.status !== 'suspended';
   const tracking = state.trackingActive && onDuty;
   const pos = driver.truckId ? state.db.trackingPositions[driver.truckId] : null;
+  const needsAccess = onDuty && driver.truckId && !tracking && state.geoPermission !== 'denied';
+  const blocked = onDuty && driver.truckId && state.geoPermission === 'denied';
+
   let sub;
   if (!driver.truckId) sub = 'No truck assigned — tracking unavailable';
   else if (!onDuty) sub = 'Tracking stopped';
+  else if (blocked) sub = 'Location access is blocked for this site';
   else if (tracking && pos) sub = `Live · ${pos.zone} · updated ${timeAgo(pos.lastUpdate)}`;
-  else if (onDuty) sub = 'Acquiring GPS signal…';
+  else if (needsAccess) sub = 'Location access needed to start tracking';
+  else sub = 'Acquiring GPS signal…';
+
   el.innerHTML = `
     <div class="duty-bar">
       <div class="duty-status">
@@ -1868,8 +1931,21 @@ function renderDutyBar() {
           <div class="duty-sub">${sub}</div>
         </div>
       </div>
-      <button class="action-btn ${onDuty ? 'danger' : ''}" onclick="dpToggleDuty()">${onDuty ? 'Go Off Duty' : 'Go On Duty'}</button>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+        ${needsAccess ? `<button class="action-btn duty-cta" onclick="requestLocationAccess()">📍 Enable Location Tracking</button>` : ''}
+        <button class="action-btn ${onDuty ? 'danger' : ''}" onclick="dpToggleDuty()">${onDuty ? 'Go Off Duty' : 'Go On Duty'}</button>
+      </div>
     </div>
+    ${blocked ? `
+      <div class="duty-blocked-banner">
+        <b>Location is blocked for this site.</b> Your truck can't be tracked until you re-enable it:
+        <ul>
+          <li><b>Chrome/Android:</b> tap the lock icon next to the address bar → Permissions → Location → Allow</li>
+          <li><b>Safari/iOS:</b> Settings app → Safari (or this app, if installed to Home Screen) → Location → Allow</li>
+        </ul>
+        Then tap <b>Enable Location Tracking</b> above again.
+      </div>
+    ` : ''}
   `;
 }
 
