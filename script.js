@@ -1490,9 +1490,9 @@ async function applyTripStatus(t, status, actorLabel) {
   // the write actually landed. Here we write just the rows this change
   // touched and WAIT for confirmation before reporting success upward.
   try {
-    const writes = [ supabase.from('trips').upsert(tripToRow(t)) ];
-    if (truck)  writes.push(supabase.from('trucks').upsert(truckToRow(truck)));
-    if (driver) writes.push(supabase.from('drivers').upsert(driverToRow(driver)));
+    const writes = [ supabase.from('trips').update(tripToRow(t)).eq('id', t.id) ];
+    if (truck)  writes.push(supabase.from('trucks').update(truckToRow(truck)).eq('id', truck.id));
+    if (driver) writes.push(supabase.from('drivers').update(driverToRow(driver)).eq('id', driver.id));
     const results = await Promise.all(writes);
     const failed = results.find(r => r && r.error);
     if (failed) throw failed.error;
@@ -1519,9 +1519,6 @@ async function applyTripStatus(t, status, actorLabel) {
   if (status === 'breakdown') buildAlerts();
   buildBadges();
   addAudit(actorLabel, 'Trip Status Update', `${t.container} ${old} → ${status}`);
-  // Background sync for anything else that may be pending elsewhere in
-  // the app — the change that matters here is already safely persisted.
-  scheduleSave();
   return { ok:true, old, status };
 }
 
@@ -3074,7 +3071,12 @@ async function saveUser() {
   if(!validateEmail(email)) { toast('Invalid email format','error'); return; }
   if(state.db.profiles.some(u=>u.username===user)) { toast('Username taken','error'); return; }
   
- 
+  // In production, this would call a Supabase Edge Function to create the
+  // auth user + a matching profiles row. The real `profiles` table has a
+  // foreign key to auth.users, so we can't insert a usable row from the
+  // client — this stays a local, session-only preview until that user is
+  // actually invited via the Supabase Dashboard (it will disappear on next
+  // reload, once `profiles` is refetched from Supabase).
   state.db.profiles.push({
     id:uid('USR'), name, username:user,
     email: email,
