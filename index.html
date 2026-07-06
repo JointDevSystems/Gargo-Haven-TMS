@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gargo · Fleet Operations</title>
 
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#06080F" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Gargo" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
@@ -298,6 +308,10 @@
                         </div>
                     </div>
                     <div class="section-topbar-right">
+                        <button class="install-app-btn" id="installAppBtn" onclick="handleInstallClick()" style="display:none">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span>Download App</span>
+                        </button>
                         <div class="topbar-date" id="todayDate"></div>
                         <div class="role-chip" id="topbarRoleChip"></div>
                     </div>
@@ -918,6 +932,7 @@
                             <div class="sec-title-admin">Live Tracking</div>
                             <div class="filter-row">
                                 <button class="action-btn ghost" onclick="refreshTracking()">↻ Refresh</button>
+                                <button class="action-btn ghost" onclick="fitTrackingBounds()">⤢ Show All</button>
                             </div>
                         </div>
                         <div class="panel">
