@@ -231,7 +231,13 @@ body::before {
 .install-app-btn { display: flex; align-items: center; gap: 6px; font-family: var(--font-ui); font-size: 11px; font-weight: 600; letter-spacing: 0.2px; color: var(--gold); background: var(--gold-dim); border: 1px solid var(--gold-border); border-radius: 6px; padding: 6px 11px; cursor: pointer; transition: all 0.18s; }
 .install-app-btn:hover { background: rgba(201,162,39,0.2); border-color: var(--gold); }
 .install-app-btn svg { flex-shrink: 0; }
-@media (max-width: 720px) { .install-app-btn span { display: none; } .install-app-btn { padding: 6px 8px; } }
+.refresh-app-btn { display: flex; align-items: center; gap: 6px; font-family: var(--font-ui); font-size: 11px; font-weight: 600; letter-spacing: 0.2px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px 11px; cursor: pointer; transition: all 0.18s; }
+.refresh-app-btn:hover { color: var(--gold); border-color: var(--gold-border); background: var(--gold-dim); }
+.refresh-app-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.refresh-app-btn svg { flex-shrink: 0; }
+.refresh-app-btn svg.spinning { animation: refresh-spin 0.7s linear infinite; }
+@keyframes refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@media (max-width: 720px) { .install-app-btn span, .refresh-app-btn span { display: none; } .install-app-btn, .refresh-app-btn { padding: 6px 8px; } }
 .hamburger { background: none; border: none; cursor: pointer; display: flex; flex-direction: column; gap: 4px; padding: 4px; }
 .hamburger span { display: block; width: 18px; height: 1.5px; background: var(--text-2); border-radius: 1px; transition: var(--transition); }
 .hamburger:hover span { background: var(--text); }

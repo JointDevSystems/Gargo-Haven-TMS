@@ -23,16 +23,16 @@ let state = {
   sessionTimeout    : null,
   _saveDebounce     : null,
 
-  // Live GPS tracking (driver-side geolocation + admin-side map)
-  geoWatchId        : null,   // navigator.geolocation.watchPosition handle
-  trackingActive    : false,  // true while this device is actively pushing GPS pings
-  geoPermission     : 'unknown', // 'unknown' | 'prompt' | 'granted' | 'denied'
-  lastGeoSend       : 0,      // throttle timestamp
-  trackingMap       : null,   // L.Map instance (admin Live Tracking, Leaflet)
-  truckMarkers      : {},     // truckId -> L.Marker
+  
+  geoWatchId        : null,   
+  trackingActive    : false,  
+  geoPermission     : 'unknown', 
+  lastGeoSend       : 0,   
+  trackingMap       : null,   
+  truckMarkers      : {},     
   _gmapsLoading     : false,
   _gmapsCallbacks   : [],
-  _trackingChannel  : null,   // supabase realtime channel for tracking_positions
+  _trackingChannel  : null,   
 };
 
 
@@ -645,7 +645,10 @@ function applyRoleUI() {
   const muItem = document.querySelector('.user-menu-item[onclick*="usermgmt"]');
   if (muItem) muItem.style.display = railAllowed.includes('usermgmt') ? '' : 'none';
 
-
+  // Inside Allocation, requisition/workshop approvals and the manual
+  // status override are admin-only even for roles (clerk, dispatch) that
+  // can otherwise open the Allocation section for truck/driver/container
+  // assignment.
   ['allocTabBtn-requisitions','allocTabBtn-workshop'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
@@ -653,13 +656,17 @@ function applyRoleUI() {
   if (statusOverride) statusOverride.style.display='none';
 }
 
-
+// Picks the first section a role is actually allowed to land on. Admin
+// always lands on the dashboard; everyone else skips straight to the
+// first item in their allowed sidebar list.
 function defaultSectionForRole() {
   if (isAdmin()) return 'dashboard';
   const allowed = allowedSidebarSections();
   return allowed[0] || 'trips';
 }
-
+// The logged-in driver's own row in `drivers`, matched via drivers.profile_id
+// (added alongside the driver auth/role migration). Returns null until an
+// admin links the driver record to that person's login.
 function myDriverRecord() { return state.db.drivers.find(d => d.profileId === state.profile?.id) || null; }
 function canFinance() { return state.financeUnlocked; }
 function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
@@ -3522,14 +3529,7 @@ function downloadTextFile(filename, content, mime) {
   URL.revokeObjectURL(url);
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 25  LIVE TRACKING
-   Real GPS: every position in trackingPositions was pushed by an
-   on-duty driver's own device (see onDriverPosition above). This
-   section just displays it — a Google Map with live markers, plus
-   the sidebar/movements lists — and stays in sync via a Supabase
-   realtime subscription so new pings appear without a refresh.
-────────────────────────────────────────────────────────────────── */
+
 function initTrackingSection() {
   renderTracking();
   initTrackingMap();
@@ -3560,10 +3560,7 @@ function renderTracking() {
   }
 }
 
-// Pans/zooms the Live Tracking map to a specific truck and pops its info
-// bubble open — used when an admin clicks a row in the vehicle/movement
-// list, since a truck can otherwise be far outside the current view
-// (e.g. a driver who drove well outside the usual Mombasa operating area).
+
 function focusTruckOnMap(truckId) {
   const p = state.db.trackingPositions?.[truckId];
   if (!p || !state.trackingMap) return;
@@ -3572,8 +3569,7 @@ function focusTruckOnMap(truckId) {
   if (marker) marker.openPopup();
 }
 
-// Zooms/pans the map so every currently tracked truck is visible at once —
-// handy when a vehicle is far outside the default Mombasa view.
+
 function fitTrackingBounds() {
   if (!state.trackingMap) return;
   const markers = Object.values(state.truckMarkers);
@@ -3582,9 +3578,7 @@ function fitTrackingBounds() {
   state.trackingMap.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 14 });
 }
 
-// Manual refresh: re-pull tracking_positions from Supabase directly
-// (the realtime subscription keeps this in sync automatically, but this
-// gives admins an explicit "force refresh" control too).
+
 async function refreshTracking() {
   const { data, error } = await supabase.from('tracking_positions').select('*');
   if (error) { toast('Could not refresh tracking data', 'error'); return; }
@@ -3596,8 +3590,7 @@ async function refreshTracking() {
   toast('Tracking positions refreshed', 'info', 1800);
 }
 
-// Keeps every connected admin/ops browser in sync the instant a driver's
-// device pushes (or clears, on going off-duty) a GPS ping — no polling.
+
 function subscribeTrackingRealtime() {
   if (state._trackingChannel) return;
   state._trackingChannel = supabase.channel('tracking-positions-live')
@@ -3614,14 +3607,10 @@ function subscribeTrackingRealtime() {
     .subscribe();
 }
 
-/* ---- Leaflet / OpenStreetMap: no API key, no dynamic script load ----
-   Leaflet is loaded up-front from index.html, so all we need to do is
-   wait for window.L to exist (it's synchronous in practice, but this
-   keeps the same callback shape the rest of the code expects). */
+
 function loadGoogleMapsScript(cb) {
   if (window.L) { cb(null); return; }
-  // Leaflet failed to load (e.g. CDN blocked) — retry a couple of times
-  // then give up gracefully.
+ 
   let tries = 0;
   const iv = setInterval(() => {
     tries++;
@@ -3644,8 +3633,7 @@ function initTrackingMap() {
       center: [-4.0435, 39.6682], // Mombasa
       zoom: 12,
     });
-    // CARTO's free "dark matter" tiles (no key) to match the app's dark theme.
-    // Falls back automatically to plain OpenStreetMap tiles if this ever 404s.
+
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
       maxZoom: 19,
@@ -3688,8 +3676,7 @@ function updateTrackingMarkers() {
       marker.setIcon(icon);
     }
   });
-  // A truck disappears from trackingPositions the instant its driver goes
-  // off duty (see stopDriverTracking) — drop its marker immediately too.
+
   Object.keys(state.truckMarkers).forEach(id => {
     if (!seen.has(id)) { state.trackingMap.removeLayer(state.truckMarkers[id]); delete state.truckMarkers[id]; }
   });
@@ -3762,12 +3749,7 @@ async function saveUser() {
   if(!validateEmail(email)) { toast('Invalid email format','error'); return; }
   if(state.db.profiles.some(u=>u.username===user)) { toast('Username taken','error'); return; }
   
-  // In production, this would call a Supabase Edge Function to create the
-  // auth user + a matching profiles row. The real `profiles` table has a
-  // foreign key to auth.users, so we can't insert a usable row from the
-  // client — this stays a local, session-only preview until that user is
-  // actually invited via the Supabase Dashboard (it will disappear on next
-  // reload, once `profiles` is refetched from Supabase).
+
   state.db.profiles.push({
     id:uid('USR'), name, username:user,
     email: email,
@@ -3970,13 +3952,7 @@ async function submitChangePassword() {
     err.textContent = 'Connection error';
   }
 }
-/* ──────────────────────────────────────────────────────────────────
-   § 29b  ADMIN-ONLY DELETE (all tables)
-   Single generic path for destructive deletes. Every entity's detail
-   modal calls this the same way — only admins ever see the button,
-   and the function itself re-checks role so nothing can be deleted
-   by calling it directly from the console either.
-────────────────────────────────────────────────────────────────── */
+
 const DELETE_TABLE_LABELS = {
   trucks:'Truck', drivers:'Driver', trips:'Trip', maintenance:'Maintenance record',
   fuel:'Fuel log', shutouts:'Shutout record', interchange:'Interchange record',
@@ -4007,14 +3983,7 @@ function confirmDeleteRecord(table, id) {
   if (state.currentAdminSection) renderSection(state.currentAdminSection);
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 29c  IMAGE UPLOAD (trucks + containers)
-   Lightweight client-side upload — reads the file as a base64 data
-   URL and stores it directly on the record (trucks.img / interchange.img).
-   Good enough for a demo/production-lite deployment; swap the
-   FileReader step for a Supabase Storage upload when wiring the
-   real backend and just keep the resulting URL in the same field.
-────────────────────────────────────────────────────────────────── */
+
 function triggerImageUpload(table, id, field, afterFn) {
   const input = document.createElement('input');
   input.type = 'file';
@@ -4074,10 +4043,7 @@ function liveSearch(q) {
   const db = state.db;
   q = q.toLowerCase().trim();
 
-  // Container is matched first and separately from Trip: a container
-  // can span multiple trips (re-dispatches) plus shutout/interchange
-  // history, so it gets its own consolidated result + detail view
-  // rather than jumping straight to a single trip record.
+
   const containerMatches = new Set();
   db.trips.forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
   db.shutouts.forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
@@ -4105,15 +4071,7 @@ function liveSearch(q) {
   panel.style.display='block';
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § CONTAINER 360° VIEW
-   Triggered from global search (and reusable anywhere else). Pulls
-   together every record that mentions a container number — trips
-   (current + historical), shutouts, interchange — plus the set of
-   actions the current user is actually allowed to take on it, so a
-   single search answers "where is this box and what can I do with
-   it" in one place instead of scattering it across sections.
-────────────────────────────────────────────────────────────────── */
+
 function showContainerDetail(contRaw) {
   const cont = (contRaw||'').trim().toUpperCase();
   const db = state.db;
@@ -4143,9 +4101,7 @@ function showContainerDetail(contRaw) {
   const interchangeHtml = interchange.length ? `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Interchange History (${interchange.length})</div>` +
     interchange.map(i=>`<div class="activity-row"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${i.type} · ${i.condition}</div><div style="font-size:10px;color:var(--text-3)">${lineName(i.line)}</div></div>${sbadge(i.status)}<div class="act-time">${fmtDate(i.date)}</div></div>`).join('') : '';
 
-  // Actions are permission-gated exactly like everywhere else — a
-  // viewer or someone unrelated to this container sees no action
-  // buttons at all, just the history above.
+
   const actions = [];
   if (liveTrip && canUpdateTripStatus(liveTrip)) {
     nextTripStatuses(liveTrip.status).forEach(s=>{
@@ -4194,25 +4150,18 @@ document.addEventListener('click', e=>{
   }
 });
 
-/* ──────────────────────────────────────────────────────────────────
-   § 32  POPULATING SELECTS
-────────────────────────────────────────────────────────────────── */
+
 function populateSelects() {
   fillSelect('f_truck',  state.db.trucks,  t=>[t.id, `${t.reg} — ${t.make}`]);
   fillSelect('f_driver', state.db.drivers, d=>[d.id, d.name]);
   refreshContainerHistory();
 }
 
-// Keeps the shared <datalist id="containerHistory"> in sync with every
-// container number already known to the system, so container fields can
-// behave as "pick an existing one, or just type a new one" combo boxes
-// without needing their own dedicated data source or schema change.
+
 function refreshContainerHistory() {
   const dl = document.getElementById('containerHistory');
   if (!dl) return;
-  // Track where each container number came from so the dropdown can
-  // show it (e.g. "Public Booking", "Bulk Upload") — helps dispatchers
-  // pick the right one instead of typing blind. First source seen wins.
+
   const labels = new Map();
   const tag = (c, label) => { if (c && !labels.has(c)) labels.set(c, label); };
   (state.db.trips||[]).forEach(t=>{
@@ -4253,10 +4202,7 @@ function startLivePulse() {
     state.db.trucks.filter(t=>t.status==='on_trip').forEach(t=>{
       t.fuelPct = Math.max(0, t.fuelPct - 0.1);
     });
-    // Truck positions are no longer simulated here — they come from real
-    // driver-device GPS pings (onDriverPosition) pushed live via Supabase
-    // realtime (subscribeTrackingRealtime). This tick just re-renders so
-    // "time ago" labels stay fresh even with no new pings.
+
     buildAlerts();
     if (state.currentSection==='dashboard') renderDashboard();
     if (state.currentSection==='livetracking') renderTracking();
@@ -4376,9 +4322,7 @@ async function renderPublicBookings() {
   }
 }
 
-// Locates the trip a given public booking was imported into (if any),
-// so the Public Bookings screen can offer a direct "Complete Dispatch"
-// or "View Trip" action on an already-imported row.
+
 function findTripByBookingId(bookingId) {
   return state.db.trips.find(t => t.bookingId === bookingId);
 }
@@ -4396,20 +4340,12 @@ async function importPublicBooking(bookingId) {
     if (dupTrip) { toast(`${rawCont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}). Resolve that trip first, or correct the container number on this booking.`, 'error'); return; }
   }
 
-  // Flip the booking's status FIRST, and require the DB to actually
-  // confirm the row changed (via .select()) before we touch local
-  // state. Previously this update ran fire-and-forget with no error
-  // check, so a failed write (e.g. blocked by an RLS policy) left the
-  // booking silently stuck on "pending" forever even though a trip
-  // had already been created locally — and worse, a second click
-  // would import it again since the fresh SELECT above still read
-  // status:'pending'. Doing the DB write first and bailing out loudly
-  // on failure closes both holes.
+
   const { data: updatedRows, error: updateErr } = await supabase
     .from('public_bookings')
     .update({ status: 'imported' })
     .eq('id', bookingId)
-    .eq('status', 'pending') // only succeeds if it's still pending — blocks double-import races
+    .eq('status', 'pending') 
     .select();
 
   if (updateErr) {
@@ -4422,11 +4358,7 @@ async function importPublicBooking(bookingId) {
     return;
   }
 
-  // Create the trip only now that we know the booking is safely marked
-  // imported. It is intentionally left unassigned (no truck/driver) —
-  // it will surface in the Dispatch Console's "Awaiting Dispatch" queue
-  // so an officer can pick a truck, driver, and finish the container
-  // details from the single, official dispatch form.
+
   const trip = {
     id: uid('TRIP'),
     container: rawCont || `PUB-${booking.id.slice(0,8)}`,
@@ -4478,8 +4410,6 @@ async function refreshPublicBookings() {
 })();
 
 
-// ══════════════════ PWA install ("Download App") ══════════════════
-
 let deferredInstallPrompt = null;
 
 function isStandaloneDisplay() {
@@ -4503,15 +4433,14 @@ function initInstallApp() {
     return;
   }
 
-  // Chrome / Edge / Android: browser fires this when the app is installable.
+ 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
     setInstallButtonVisible(true);
   });
 
-  // iOS Safari never fires beforeinstallprompt — show the button anyway
-  // and give manual "Add to Home Screen" steps when tapped.
+  
   if (isIOSDevice()) {
     setInstallButtonVisible(true);
   }
@@ -4567,3 +4496,28 @@ if ('serviceWorker' in navigator) {
 
 initInstallApp();
 
+
+async function hardRefreshSystem() {
+  const btn = document.getElementById('refreshAppBtn');
+  const icon = document.getElementById('refreshIcon');
+  if (btn) btn.disabled = true;
+  if (icon) icon.classList.add('spinning');
+  toast('Refreshing system…', 'info', 4000);
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) {
+    console.warn('Could not clear cache/service worker during refresh:', e);
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set('_refresh', Date.now());
+  window.location.replace(url.toString());
+}
