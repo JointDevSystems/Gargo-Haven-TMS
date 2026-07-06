@@ -645,10 +645,7 @@ function applyRoleUI() {
   const muItem = document.querySelector('.user-menu-item[onclick*="usermgmt"]');
   if (muItem) muItem.style.display = railAllowed.includes('usermgmt') ? '' : 'none';
 
-  // Inside Allocation, requisition/workshop approvals and the manual
-  // status override are admin-only even for roles (clerk, dispatch) that
-  // can otherwise open the Allocation section for truck/driver/container
-  // assignment.
+
   ['allocTabBtn-requisitions','allocTabBtn-workshop'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
@@ -656,17 +653,13 @@ function applyRoleUI() {
   if (statusOverride) statusOverride.style.display='none';
 }
 
-// Picks the first section a role is actually allowed to land on. Admin
-// always lands on the dashboard; everyone else skips straight to the
-// first item in their allowed sidebar list.
+
 function defaultSectionForRole() {
   if (isAdmin()) return 'dashboard';
   const allowed = allowedSidebarSections();
   return allowed[0] || 'trips';
 }
-// The logged-in driver's own row in `drivers`, matched via drivers.profile_id
-// (added alongside the driver auth/role migration). Returns null until an
-// admin links the driver record to that person's login.
+
 function myDriverRecord() { return state.db.drivers.find(d => d.profileId === state.profile?.id) || null; }
 function canFinance() { return state.financeUnlocked; }
 function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email); }
@@ -4484,6 +4477,7 @@ async function refreshPublicBookings() {
 
 })();
 
+
 // ══════════════════ PWA install ("Download App") ══════════════════
 
 let deferredInstallPrompt = null;
@@ -4572,3 +4566,4 @@ if ('serviceWorker' in navigator) {
 }
 
 initInstallApp();
+
