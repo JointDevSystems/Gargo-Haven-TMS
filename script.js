@@ -3551,20 +3551,42 @@ function renderTracking() {
     vehicles.innerHTML = trks.map(id=>{
       const p = pos[id];
       const t = state.db.trucks.find(t=>t.id===id);
-      return `<div class="tv-item"><div class="tv-reg">${t?.reg||id}</div><div>Speed: ${p.speed} km/h · ${p.heading}</div><div style="font-size:9px;color:var(--text-3)">${p.zone} · ${timeAgo(p.lastUpdate)}</div></div>`;
+      return `<div class="tv-item" onclick="focusTruckOnMap('${id}')"><div class="tv-reg">${t?.reg||id}</div><div>Speed: ${p.speed} km/h · ${p.heading}</div><div style="font-size:9px;color:var(--text-3)">${p.zone} · ${timeAgo(p.lastUpdate)}</div></div>`;
     }).join('') || '<div style="padding:10px;color:var(--text-3);font-size:11px">No drivers currently on duty</div>';
   }
   const movements = document.getElementById('trackingMovements');
   if (movements) {
     movements.innerHTML = trks.map(id=>{
       const p=pos[id]; const t=state.db.trucks.find(t=>t.id===id);
-      return `<div class="movement-row"><div class="mono" style="font-size:10px;color:var(--gold)">${t?.reg||id}</div><div style="font-size:11px;color:var(--text-2)">${p.zone} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div><div style="font-size:9.5px;color:var(--text-3)">${timeAgo(p.lastUpdate)}</div></div>`;
+      return `<div class="movement-row" onclick="focusTruckOnMap('${id}')"><div class="mono" style="font-size:10px;color:var(--gold)">${t?.reg||id}</div><div style="font-size:11px;color:var(--text-2)">${p.zone} · ${p.speed>0?p.speed+' km/h':'Stationary'}</div><div style="font-size:9.5px;color:var(--text-3)">${timeAgo(p.lastUpdate)}</div></div>`;
     }).join('') || '<div style="padding:12px;color:var(--text-3)">No active movements</div>';
   }
   const geofence = document.getElementById('trackingGeofence');
   if (geofence) {
     geofence.innerHTML = `<div style="padding:12px;color:var(--text-3);font-size:10.5px">Geofence alerting isn't wired up yet — positions above are live GPS from drivers' devices.</div>`;
   }
+}
+
+// Pans/zooms the Live Tracking map to a specific truck and pops its info
+// bubble open — used when an admin clicks a row in the vehicle/movement
+// list, since a truck can otherwise be far outside the current view
+// (e.g. a driver who drove well outside the usual Mombasa operating area).
+function focusTruckOnMap(truckId) {
+  const p = state.db.trackingPositions?.[truckId];
+  if (!p || !state.trackingMap) return;
+  state.trackingMap.setView([p.lat, p.lng], Math.max(state.trackingMap.getZoom(), 13), { animate: true });
+  const marker = state.truckMarkers[truckId];
+  if (marker) marker.openPopup();
+}
+
+// Zooms/pans the map so every currently tracked truck is visible at once —
+// handy when a vehicle is far outside the default Mombasa view.
+function fitTrackingBounds() {
+  if (!state.trackingMap) return;
+  const markers = Object.values(state.truckMarkers);
+  if (!markers.length) { toast('No vehicles currently tracked', 'info', 1800); return; }
+  const group = L.featureGroup(markers);
+  state.trackingMap.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 14 });
 }
 
 // Manual refresh: re-pull tracking_positions from Supabase directly
@@ -3638,6 +3660,7 @@ function initTrackingMap() {
     }).addTo(state.trackingMap);
     state.truckMarkers = {};
     updateTrackingMarkers();
+    fitTrackingBounds();
   });
 }
 
