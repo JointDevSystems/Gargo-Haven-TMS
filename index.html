@@ -308,6 +308,10 @@
                         </div>
                     </div>
                     <div class="section-topbar-right">
+                        <div class="sync-status synced" id="syncStatus" onclick="handleSyncStatusClick()">
+                            <span class="sync-dot"></span>
+                            <span id="syncLabel">Synced</span>
+                        </div>
                         <button class="refresh-app-btn" id="refreshAppBtn" onclick="hardRefreshSystem()" title="Refresh the entire system — reloads live data and clears any cached files">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="refreshIcon"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
                             <span>Refresh</span>
