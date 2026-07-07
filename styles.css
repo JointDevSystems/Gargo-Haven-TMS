@@ -238,6 +238,8 @@ body::before {
 .refresh-app-btn svg.spinning { animation: refresh-spin 0.7s linear infinite; }
 @keyframes refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 @media (max-width: 720px) { .install-app-btn span, .refresh-app-btn span { display: none; } .install-app-btn, .refresh-app-btn { padding: 6px 8px; } }
+@media (max-width: 480px) { .topbar-date, .role-chip { display: none; } }
+@media (max-width: 400px) { #syncLabel { display: none; } }
 .hamburger { background: none; border: none; cursor: pointer; display: flex; flex-direction: column; gap: 4px; padding: 4px; }
 .hamburger span { display: block; width: 18px; height: 1.5px; background: var(--text-2); border-radius: 1px; transition: var(--transition); }
 .hamburger:hover span { background: var(--text); }
