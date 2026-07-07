@@ -1044,7 +1044,10 @@ function buildBadges() {
 function buildAlerts() {
   const db=state.db;
   const alerts=[];
-
+  // Highest priority: breakdowns reported directly by a driver from the
+  // field (via the Driver Portal). These jump the queue ahead of every
+  // other alert type because a stranded driver/truck needs the fastest
+  // possible dispatch response.
   db.maintenance.filter(m=>m.status==='open' && m.priority==='critical' && m.reportedByDriver).forEach(m=>{
     alerts.push({ type:'driver_breakdown', msg: `🚨 DRIVER BREAKDOWN REPORT — ${truckName(m.truckId)}: ${m.desc.slice(0,60)}…` });
   });
@@ -1062,7 +1065,8 @@ function buildAlerts() {
     alerts.push({ type:'warn', msg: `Licence expiry — ${d.name}: ${days} days remaining` });
   });
 
- 
+  // Sort so driver-reported breakdowns always float to the very top,
+  // followed by other critical issues, then general warnings.
   const priorityOrder = { driver_breakdown:0, crit:1, warn:2 };
   alerts.sort((a,b)=>(priorityOrder[a.type]??9)-(priorityOrder[b.type]??9));
 
@@ -1328,7 +1332,10 @@ function quickSetDriverStatus(id, status) {
   toast(`${d.name} status updated`, 'success');
 }
 
-
+// Links (or unlinks) this driver record to a role:'driver' login, so that
+// person's Driver Portal shows their truck/trip. The profile itself must
+// already exist (invited via Supabase Dashboard / User Management, same
+// as any other role) — this only sets drivers.profile_id.
 function linkDriverProfile(driverId, profileId) {
   if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const d = state.db.drivers.find(d=>d.id===driverId);
@@ -1404,7 +1411,19 @@ function showTripDetail(id) {
   openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();jumpToCompleteDispatch('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
 }
 
-
+/* ──────────────────────────────────────────────────────────────────
+   § TRIP STATUS STATE MACHINE
+   A trip's lifecycle only ever moves forward:
+     active(0) → loaded(1) → on_trip(2) → offloaded(3) → completed(4)
+   'delayed' and 'breakdown' are flags raised while a trip is under
+   way, so they share on_trip's rank — they can be set at that point
+   in the journey, but can never be used to pull a trip backwards
+   once it has moved on. 'completed' is terminal: once a trip is
+   completed, no further status change of any kind is accepted
+   (e.g. a completed trip can never afterwards be marked breakdown).
+   This one table is the single source of truth for every place that
+   changes trip status — admin, clerk, dispatch and driver alike.
+────────────────────────────────────────────────────────────────── */
 const TRIP_STATUS_RANK = { active:0, loaded:1, on_trip:2, delayed:2, breakdown:2, offloaded:3, completed:4 };
 const TRIP_ALL_STATUSES = Object.keys(TRIP_STATUS_RANK);
 
@@ -1415,12 +1434,16 @@ function canTransitionTripStatus(from, to) {
   return TRIP_STATUS_RANK[to] >= TRIP_STATUS_RANK[from];
 }
 
-
+// Every forward status still reachable from a trip's current status —
+// used to render only the buttons a user is actually allowed to press,
+// so the UI itself can never offer a backwards move.
 function nextTripStatuses(currentStatus) {
   return TRIP_ALL_STATUSES.filter(s => canTransitionTripStatus(currentStatus, s));
 }
 
-
+// Who may touch this trip's status at all. Admin, clerk and dispatch
+// can update any trip. A driver may only update the trip currently
+// assigned to them — never someone else's.
 function canUpdateTripStatus(t) {
   if (!t) return false;
   if (isAdmin() || isClerk() || isDispatch()) return true;
@@ -1428,6 +1451,13 @@ function canUpdateTripStatus(t) {
   return false;
 }
 
+// Shared core: validates permission + the forward-only rule, then
+// applies a trip status change, cascading truck/driver status resets
+// exactly as before. Used by every entry point (admin quick-set,
+// clerk/dispatch controls, and the driver-portal step buttons) so
+// behaviour never diverges between roles. Returns {ok:true, old} on
+// success, or {ok:false, reason} on rejection so the caller can show
+// an accurate message instead of silently doing nothing.
 async function applyTripStatus(t, status, actorLabel) {
   if (!canUpdateTripStatus(t)) return { ok:false, reason:'permission' };
   if (!canTransitionTripStatus(t.status, status)) return { ok:false, reason:'transition', from:t.status };
@@ -1435,7 +1465,9 @@ async function applyTripStatus(t, status, actorLabel) {
   const old = t.status;
   const truck  = state.db.trucks.find(tr=>tr.id===t.truckId);
   const driver = state.db.drivers.find(d=>d.id===t.driverId);
-
+  // Snapshot so a failed write can be rolled back cleanly instead of
+  // leaving the UI showing a status that never actually made it to
+  // Supabase (which is exactly what made trips "revert" on refresh).
   const truckSnapshot  = truck  ? { ...truck }  : null;
   const driverSnapshot = driver ? { ...driver } : null;
 
@@ -1444,7 +1476,9 @@ async function applyTripStatus(t, status, actorLabel) {
   let newMaintenanceTicket = null;
   if (status === 'breakdown') {
     if (truck) truck.status = 'breakdown';
-
+    // Open (or reuse) a critical maintenance ticket so the breakdown shows
+    // up in Maintenance + the alerts feed. Reports coming from a driver in
+    // the field are flagged so buildAlerts() can push them to the top.
     const existing = state.db.maintenance.find(m=>m.truckId===t.truckId && m.status!=='resolved' && m.type==='Breakdown');
     if (existing) {
       existing.reportedByDriver = existing.reportedByDriver || isDriver();
@@ -1464,7 +1498,12 @@ async function applyTripStatus(t, status, actorLabel) {
     if (driver) { driver.load = null; driver.tripsToday++; }
   }
 
-
+  // Persist immediately and directly, instead of relying only on the
+  // generic debounced scheduleSave()/saveDB(), which re-upserts every row
+  // of every table 300ms later and only console.errors on failure — the
+  // UI had already told the user "success" by then regardless of whether
+  // the write actually landed. Here we write just the rows this change
+  // touched and WAIT for confirmation before reporting success upward.
   try {
     const writes = [ supabase.from('trips').update(tripToRow(t)).eq('id', t.id) ];
     if (truck)  writes.push(supabase.from('trucks').update(truckToRow(truck)).eq('id', truck.id));
@@ -1478,7 +1517,9 @@ async function applyTripStatus(t, status, actorLabel) {
     }
   } catch (e) {
     console.error('Trip status save failed:', e && e.message);
-
+    // Roll back the optimistic local change so in-memory state matches
+    // what's actually in the database. Without this, the app kept showing
+    // "completed" locally until the next reload silently reverted it.
     t.status = old;
     if (truck  && truckSnapshot)  Object.assign(truck,  truckSnapshot);
     if (driver && driverSnapshot) Object.assign(driver, driverSnapshot);
@@ -1496,7 +1537,10 @@ async function applyTripStatus(t, status, actorLabel) {
   return { ok:true, old, status };
 }
 
-
+// Callable by admin, clerk and dispatch (and by a driver on their own
+// trip, though the driver portal normally uses driverAdvanceTrip
+// instead). Enforces the same forward-only rule for everyone — there
+// is no "admin override" path that can move a trip backwards.
 async function quickSetTripStatus(id, status) {
   const t = state.db.trips.find(t=>t.id===id);
   if (!t) { toast('Trip not found', 'error'); return; }
@@ -1518,7 +1562,12 @@ async function quickSetTripStatus(id, status) {
   toast(`Trip updated to ${status.replace('_',' ')}`, 'success');
 }
 
-
+/* ──────────────────────────────────────────────────────────────────
+   § DRIVER PORTAL — self-service view for role:'driver' accounts.
+   Drivers only ever see their own truck + trip; every write goes
+   through applyTripStatus() so it's identical to the admin path, but
+   is gated to trips actually assigned to that driver.
+────────────────────────────────────────────────────────────────── */
 const DRIVER_TRIP_STEPS = ['loaded','on_trip','offloaded','breakdown','completed'];
 let _dpTab = 'trip';
 
@@ -1537,7 +1586,10 @@ function renderDriverPortal() {
     return;
   }
 
-
+  // Live GPS tracking follows duty status automatically: on duty + truck
+  // assigned => tracking runs; off duty (or suspended) => tracking stops.
+  // We check permission state first so we know whether to just start
+  // silently (already granted) or show an explicit "enable" CTA instead.
   checkGeoPermission().then(() => {
     if (driverShouldTrack(driver) && state.geoPermission !== 'denied') startDriverTracking();
     else if (!driverShouldTrack(driver)) stopDriverTracking();
@@ -1650,9 +1702,19 @@ function dpRenderCompletedTripsTab(el, driver) {
   `;
 }
 
-
-const GEO_PING_INTERVAL_MS = 10000;  
-const ZONE_LOOKUP_INTERVAL_MS = 60000; 
+/* ──────────────────────────────────────────────────────────────────
+   § DUTY STATUS & LIVE GPS TRACKING (driver-side)
+   The driver's own phone/browser IS the truck's GPS source. While a
+   driver is on duty (status !== 'off_duty' and !== 'suspended') and
+   has a truck assigned, we watch their device location and push
+   pings straight to `tracking_positions` (bypassing the heavy
+   whole-DB scheduleSave/saveDB path — this needs to be cheap and
+   frequent). The moment a driver marks himself off duty, tracking
+   stops immediately and their truck's marker is cleared from the
+   live map.
+────────────────────────────────────────────────────────────────── */
+const GEO_PING_INTERVAL_MS = 10000;   // min gap between GPS pings sent to Supabase
+const ZONE_LOOKUP_INTERVAL_MS = 60000; // reverse-geocode less often (quota-friendly)
 let _lastZoneVal = null;
 let _lastZoneFetch = 0;
 
@@ -1660,7 +1722,12 @@ function driverShouldTrack(driver) {
   return !!(driver && driver.truckId && driver.status !== 'off_duty' && driver.status !== 'suspended');
 }
 
-
+// Checks (and watches) the browser's location permission state so the duty
+// bar can show the right thing: a "grant access" prompt, a live indicator,
+// or a clear "blocked — here's how to fix it" message. The Permissions API
+// isn't supported everywhere (notably iOS Safari), so this degrades to
+// 'unknown' there and we just rely on the getCurrentPosition/watchPosition
+// callbacks themselves to tell us what happened.
 async function checkGeoPermission() {
   if (!navigator.permissions?.query) { state.geoPermission = 'unknown'; return; }
   try {
@@ -1681,7 +1748,10 @@ async function checkGeoPermission() {
   }
 }
 
-
+// The explicit "Enable Location Tracking" button in the duty bar. Firing
+// geolocation from a direct tap (rather than only automatically on page
+// load) is what reliably triggers the native permission prompt on every
+// platform, including iOS home-screen apps.
 function requestLocationAccess() {
   const driver = myDriverRecord();
   if (!driverShouldTrack(driver)) return;
@@ -1776,7 +1846,12 @@ function onDriverGeoError(err) {
   renderDutyBar();
 }
 
-
+// Reverse-geocodes via Nominatim (OpenStreetMap's free geocoder) — no API
+// key, no billing. Nominatim's usage policy asks for max ~1 request/second
+// across the whole app, so _nominatimQueue below chains every call and
+// spaces them out, no matter how many drivers are pinging at once. Falls
+// back to raw coordinates if the lookup fails, so tracking still works
+// even if the geocoder is briefly unreachable.
 let _nominatimQueue = Promise.resolve();
 function reverseGeocodeZone(lat, lng) {
   const run = _nominatimQueue.then(async () => {
@@ -1792,7 +1867,8 @@ function reverseGeocodeZone(lat, lng) {
       console.warn('Reverse geocode failed:', e);
       return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
     } finally {
-      
+      // Space out requests by 1.1s regardless of how fast they resolve,
+      // to stay comfortably within Nominatim's fair-use limit.
       await new Promise(r => setTimeout(r, 1100));
     }
   });
@@ -1800,7 +1876,9 @@ function reverseGeocodeZone(lat, lng) {
   return run;
 }
 
-
+// Driver taps "Go Off Duty" / "Go On Duty". Off-duty immediately halts
+// GPS tracking and clears this driver's truck from the live map; going
+// back on duty resumes it.
 function dpToggleDuty() {
   const driver = myDriverRecord();
   if (!driver) return;
@@ -1832,7 +1910,7 @@ function confirmGoOffDuty() {
   renderDriverPortal();
 }
 
-
+// Persistent duty/tracking status bar shown above every driver-portal tab.
 function renderDutyBar() {
   const el = document.getElementById('dp_dutyBar');
   if (!el) return;
@@ -1879,7 +1957,9 @@ function renderDutyBar() {
   `;
 }
 
-
+// Standalone breakdown report — not tied to an active trip. Opens a critical
+// maintenance ticket immediately and flags it so it jumps to the top of the
+// admin alerts feed (see buildAlerts()).
 function driverReportBreakdown(truckId) {
   openModal('Report Breakdown', `
     <div class="ops-notice" style="margin-bottom:12px">This will immediately flag your truck as broken down and alert dispatch/admin as a priority.</div>
@@ -2086,9 +2166,18 @@ function dpSaveShutout(driverId) {
   renderDriverPortal();
 }
 
-
-let _dispatchEditingTripId = null;  
-let _dispatchContainerImages = [];   
+/* ──────────────────────────────────────────────────────────────────
+   § 13  DISPATCH CONSOLE
+   This is now the single, official place where a trip's full details
+   (truck, driver, container, route, work type, photos…) get filled
+   in — whether the trip originated as a manual entry here, a bulk
+   upload here, or an imported Public Booking that arrived with no
+   truck/driver yet. Allocation (§ below) is intentionally limited to
+   pairing a driver with a truck; it no longer touches trip/container
+   fields at all.
+────────────────────────────────────────────────────────────────── */
+let _dispatchEditingTripId = null;   // set while completing an awaiting-dispatch trip instead of creating a new one
+let _dispatchContainerImages = [];   // base64 photos for the trip currently in the form
 
 function renderDispatch() {
   populateDispatchSelects();
@@ -2117,12 +2206,23 @@ function renderDispatchQueue() {
   container.innerHTML = `<div class="panel"><div class="panel-head"><span class="panel-title">Dispatch Queue</span><span class="panel-meta">${pending.length} active</span></div><div>${pending.map(t=>`<div class="dispatch-queue-item" onclick="showTripDetail('${t.id}')"><div class="dqi-ref">${t.container.slice(-7)}</div><div class="dqi-route"><div style="font-size:12px;font-weight:600;color:var(--text)">${t.origin}→${t.dest}</div><div style="font-size:10px;color:var(--text-3)">${truckName(t.truckId)}</div></div>${sbadge(t.status)}<div class="dqi-time">${timeAgo(t.startTime)}</div></div>`).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No dispatches yet</div></div>'}</div></div>`;
 }
 
-
+// Trips missing a truck and/or driver — regardless of where they came
+// from (Public Bookings import today; any other future source
+// tomorrow) — surface here so Dispatch stays the one place trip
+// details get completed. A trip only counts as "awaiting" while it's
+// still live (not completed/cancelled).
 function awaitingDispatchTrips() {
   return state.db.trips.filter(t => isTripLive(t) && (!t.truckId || !t.driverId));
 }
 
-
+// A trip can start needing a truck/driver from several places — an
+// imported Public Booking, a bulk-upload row with an unmatched
+// truck/driver, or a manual entry left half-filled. Whatever the
+// source, every place that surfaces "awaiting dispatch" work
+// (Dispatch Console, both Allocation tabs, sidebar/nav badges, and the
+// container dropdown) needs to reflect it immediately. Call this one
+// helper after anything changes the trips list instead of updating
+// each view by hand.
 function refreshAwaitingDispatchUI() {
   buildBadges();
   refreshContainerHistory();
@@ -2131,7 +2231,10 @@ function refreshAwaitingDispatchUI() {
   if (document.getElementById('allocManualAwaitingList')) renderAllocAwaitingList('allocManualAwaitingList', 'allocManualAwaitingMeta');
 }
 
-
+// Renders the shared "awaiting dispatch" list markup into any target
+// container (used by both Allocation tabs so a dispatcher can match a
+// truck/driver to a waiting trip without leaving the Allocation
+// screen, then jump straight into the Dispatch Console to finish it).
 function renderAllocAwaitingList(targetId, metaId) {
   const el = document.getElementById(targetId);
   if (!el) return;
@@ -2149,7 +2252,9 @@ function renderAllocAwaitingList(targetId, metaId) {
   `).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-icon">✅</div><div class="empty-state-label">Nothing awaiting dispatch</div></div>';
 }
 
-
+// Used from Allocation (either tab) or a Public Booking row to jump
+// straight into the Dispatch Console with a given trip pre-loaded into
+// the single official dispatch form.
 function jumpToCompleteDispatch(tripId) {
   showSection('dispatch', document.querySelector('[data-section="dispatch"]'));
   loadTripIntoDispatchForm(tripId);
@@ -2173,7 +2278,9 @@ function renderAwaitingDispatch() {
   `).join('') || '<div class="empty-state" style="padding:20px"><div class="empty-state-icon">✅</div><div class="empty-state-label">Nothing awaiting dispatch</div></div>';
 }
 
-
+// Pulls an unassigned trip (e.g. an imported public booking) into the
+// Single Dispatch form so its truck, driver, and any remaining
+// container details can be filled in from the one official form.
 function loadTripIntoDispatchForm(tripId) {
   const t = state.db.trips.find(tr=>tr.id===tripId);
   if (!t) { toast('Trip not found', 'error'); return; }
@@ -2259,7 +2366,9 @@ function createDispatch() {
   const images   = [..._dispatchContainerImages];
 
   if (editingId) {
- 
+    // Completing a trip that arrived without a truck/driver (e.g. an
+    // imported public booking) — update it in place rather than
+    // creating a duplicate trip record.
     const t = state.db.trips.find(tr=>tr.id===editingId);
     if (!t) { toast('That trip no longer exists — it may have been removed.', 'error'); cancelDispatchEdit(); return; }
     Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images });
@@ -2309,7 +2418,8 @@ function switchDispatchTab(tab, btn) {
   if (btn) btn.classList.add('active');
 }
 
-
+// Multiple container photos: files accumulate in _dispatchContainerImages
+// until the dispatch is submitted (or the form is cleared/cancelled).
 function previewContainerImgs(e) {
   const files = Array.from(e.target.files || []);
   if (!files.length) return;
@@ -2323,7 +2433,7 @@ function previewContainerImgs(e) {
     };
     reader.readAsDataURL(file);
   });
-  e.target.value = ''; 
+  e.target.value = ''; // allow re-selecting the same file(s) again later
 }
 
 function renderContainerImgGrid() {
@@ -4323,18 +4433,17 @@ function initInstallApp() {
     return;
   }
 
-  // Show the button up front rather than waiting on beforeinstallprompt —
-  // some Android/Chrome combinations never fire that event even when the
-  // PWA is otherwise installable (dismissal memory, engagement heuristics,
-  // etc). The button still uses the native prompt when available; it just
-  // isn't hidden while we wait for one that may never arrive.
-  setInstallButtonVisible(true);
-
+ 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
     setInstallButtonVisible(true);
   });
+
+  
+  if (isIOSDevice()) {
+    setInstallButtonVisible(true);
+  }
 
   window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
@@ -4362,22 +4471,6 @@ async function handleInstallClick() {
           <li>Tap the <strong>Share</strong> icon in Safari's toolbar.</li>
           <li>Scroll down and choose <strong>Add to Home Screen</strong>.</li>
           <li>Tap <strong>Add</strong> in the top-right corner.</li>
-        </ol>
-      </div>
-    `);
-    return;
-  }
-
-  const isAndroid = /Android/i.test(navigator.userAgent);
-
-  if (isAndroid) {
-    openModal('Install Gargo', `
-      <div style="font-size:13px;line-height:1.7;color:var(--text-2)">
-        <p style="margin-bottom:10px">Add Gargo to your Home Screen for one-tap, full-screen access:</p>
-        <ol style="padding-left:18px;margin:0">
-          <li>Tap the <strong>⋮ menu</strong> (three dots, top-right of Chrome).</li>
-          <li>Choose <strong>Add to Home screen</strong> or <strong>Install app</strong>.</li>
-          <li>Confirm by tapping <strong>Add</strong> / <strong>Install</strong>.</li>
         </ol>
       </div>
     `);
