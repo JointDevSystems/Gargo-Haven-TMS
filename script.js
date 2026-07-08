@@ -212,9 +212,10 @@ function auditToRow(a) { return { username:a.user, action:a.action, detail:a.det
 
 
 async function upsertRows(table, rows, opts) {
-  if (!rows || !rows.length) return;
+  if (!rows || !rows.length) return null;
   const { error } = await supabase.from(table).upsert(rows, opts || {});
-  if (error) console.error(`${table} save failed:`, error.message);
+  if (error) { console.error(`${table} save failed:`, error.message); return { table, error }; }
+  return null;
 }
 
 
@@ -323,37 +324,38 @@ async function loadDB() {
 
 
 async function saveDB() {
-  if (!state.db) return;
+  if (!state.db) return { ok: true, failures: [] };
   const db = state.db;
+  const failures = [];
   try {
-   
-    await upsertRows('shipping_lines', db.shippingLines.map(lineToRow));
-    await upsertRows('trucks',         db.trucks.map(truckToRow));
-    await upsertRows('drivers',        db.drivers.map(driverToRow));
-    await upsertRows('trips',          db.trips.map(tripToRow));
-    await upsertRows('maintenance',    db.maintenance.map(maintToRow));
-    await upsertRows('fuel_logs',      db.fuel.map(fuelToRow));
-    await upsertRows('shutouts',       db.shutouts.map(shutoutToRow));
-    await upsertRows('interchange',    db.interchange.map(icToRow));
-    await upsertRows('requisitions',   db.requisitions.map(reqToRow));
-    await upsertRows('workshop_jobs',  db.workshop.map(wsToRow));
-    await upsertRows('invoices',       db.invoices.map(invToRow));
+
+    failures.push(await upsertRows('shipping_lines', db.shippingLines.map(lineToRow)));
+    failures.push(await upsertRows('trucks',         db.trucks.map(truckToRow)));
+    failures.push(await upsertRows('drivers',        db.drivers.map(driverToRow)));
+    failures.push(await upsertRows('trips',          db.trips.map(tripToRow)));
+    failures.push(await upsertRows('maintenance',    db.maintenance.map(maintToRow)));
+    failures.push(await upsertRows('fuel_logs',      db.fuel.map(fuelToRow)));
+    failures.push(await upsertRows('shutouts',       db.shutouts.map(shutoutToRow)));
+    failures.push(await upsertRows('interchange',    db.interchange.map(icToRow)));
+    failures.push(await upsertRows('requisitions',   db.requisitions.map(reqToRow)));
+    failures.push(await upsertRows('workshop_jobs',  db.workshop.map(wsToRow)));
+    failures.push(await upsertRows('invoices',       db.invoices.map(invToRow)));
     await syncInvoiceTrips(db.invoices);
 
     const billingRows = Object.entries(db.billingRates || {}).map(([ctype, v]) => ({ ctype, base: v.base, per_km: v.perKm }));
-    await upsertRows('billing_rates', billingRows, { onConflict: 'ctype' });
+    failures.push(await upsertRows('billing_rates', billingRows, { onConflict: 'ctype' }));
 
-    await upsertRows('allocation_rules', db.allocationRules.map(allocToRow));
+    failures.push(await upsertRows('allocation_rules', db.allocationRules.map(allocToRow)));
 
     const trackingRows = Object.entries(db.trackingPositions || {}).map(([truckId, p]) => ({
       truck_id: truckId, lat: p.lat, lng: p.lng, speed: p.speed, heading: p.heading, zone: p.zone, last_update: p.lastUpdate,
     }));
-    await upsertRows('tracking_positions', trackingRows, { onConflict: 'truck_id' });
+    failures.push(await upsertRows('tracking_positions', trackingRows, { onConflict: 'truck_id' }));
 
     const unsavedAudit = (db.auditLog || []).filter(a => !a._saved);
     if (unsavedAudit.length) {
       const { error: auditErr } = await supabase.from('audit_log').insert(unsavedAudit.map(auditToRow));
-      if (auditErr) console.error('audit_log save failed:', auditErr.message);
+      if (auditErr) { console.error('audit_log save failed:', auditErr.message); failures.push({ table: 'audit_log', error: auditErr }); }
       else unsavedAudit.forEach(a => { a._saved = true; });
     }
 
@@ -366,12 +368,22 @@ async function saveDB() {
         whatsapp: db.settings.whatsapp,
         mpesa: db.settings.mpesa,
       }, { onConflict: 'id' });
-      if (error) console.error('app_settings save failed:', error.message);
+      if (error) { console.error('app_settings save failed:', error.message); failures.push({ table: 'app_settings', error }); }
     }
   } catch (e) {
     console.warn('Unable to save to Supabase:', e);
     toast('Could not save data. Check network.', 'warning', 4000);
+    return { ok: false, failures: [{ table: '_unknown', error: e }] };
   }
+
+  const realFailures = failures.filter(Boolean);
+  if (realFailures.length) {
+    const names = realFailures.map(f => f.table).join(', ');
+    console.error('Save completed with errors in:', names, realFailures);
+    toast(`Some changes didn't save (${names}) — please retry or check your connection`, 'error', 5000);
+    return { ok: false, failures: realFailures };
+  }
+  return { ok: true, failures: [] };
 }
 
 function scheduleSave() {
@@ -380,6 +392,15 @@ function scheduleSave() {
     saveDB();
     state._saveDebounce = null;
   }, 300);
+}
+
+// Like scheduleSave(), but returns a promise that resolves once the save
+// actually completes, so callers can confirm success/failure before telling
+// the user their action worked (used for safety-critical actions like
+// breakdown reporting, where a silent failure is unacceptable).
+function saveNowAwaited() {
+  if (state._saveDebounce) { clearTimeout(state._saveDebounce); state._saveDebounce = null; }
+  return saveDB();
 }
 
 const FINANCE_PIN   = '2026';
@@ -1383,9 +1404,10 @@ async function applyTripStatus(t, status, actorLabel) {
 
   t.status = status;
 
+  let truckChanged = false, driverChanged = false;
   let newMaintenanceTicket = null;
   if (status === 'breakdown') {
-    if (truck) truck.status = 'breakdown';
+    if (truck) { truck.status = 'breakdown'; truckChanged = true; }
 
     const existing = state.db.maintenance.find(m=>m.truckId===t.truckId && m.status!=='resolved' && m.type==='Breakdown');
     if (existing) {
@@ -1401,15 +1423,20 @@ async function applyTripStatus(t, status, actorLabel) {
     }
   }
   if (status === 'completed') {
-    if (truck && truck.status ==='on_trip')  truck.status  = 'available';
-    if (driver && driver.status==='on_trip')  driver.status = 'available';
-    if (driver) { driver.load = null; driver.tripsToday++; }
+    if (truck && truck.status ==='on_trip')  { truck.status  = 'available'; truckChanged = true; }
+    if (driver && driver.status==='on_trip')  { driver.status = 'available'; driverChanged = true; }
+    if (driver) { driver.load = null; driver.tripsToday++; driverChanged = true; }
   }
 
+  // Only write truck/driver rows when this status change actually touches
+  // them. Rewriting untouched rows on every trip step widens the failure
+  // surface for no reason — if that write is rejected (e.g. by an RLS
+  // policy or a stricter role permission on those tables) the whole trip
+  // update was rolled back even though the trip itself was fine.
   try {
     const writes = [ supabase.from('trips').update(tripToRow(t)).eq('id', t.id) ];
-    if (truck)  writes.push(supabase.from('trucks').update(truckToRow(truck)).eq('id', truck.id));
-    if (driver) writes.push(supabase.from('drivers').update(driverToRow(driver)).eq('id', driver.id));
+    if (truck  && truckChanged)  writes.push(supabase.from('trucks').update(truckToRow(truck)).eq('id', truck.id));
+    if (driver && driverChanged) writes.push(supabase.from('drivers').update(driverToRow(driver)).eq('id', driver.id));
     const results = await Promise.all(writes);
     const failed = results.find(r => r && r.error);
     if (failed) throw failed.error;
@@ -1418,7 +1445,7 @@ async function applyTripStatus(t, status, actorLabel) {
       if (mErr) throw mErr;
     }
   } catch (e) {
-    console.error('Trip status save failed:', e && e.message);
+    console.error('Trip status save failed:', e && e.message, e);
 
     t.status = old;
     if (truck  && truckSnapshot)  Object.assign(truck,  truckSnapshot);
@@ -1428,7 +1455,7 @@ async function applyTripStatus(t, status, actorLabel) {
       if (idx > -1) state.db.maintenance.splice(idx, 1);
     }
     buildBadges();
-    return { ok:false, reason:'save', error:e };
+    return { ok:false, reason:'save', error:e, message: (e && e.message) || '' };
   }
 
   if (status === 'breakdown') buildAlerts();
@@ -1448,7 +1475,7 @@ async function quickSetTripStatus(id, status) {
     if (res.reason === 'transition') {
       toast(`Cannot change status from "${res.from.replace('_',' ')}" to "${status.replace('_',' ')}" — trips can only move forward`, 'error');
     } else if (res.reason === 'save') {
-      toast('Could not save this update — check your connection and try again', 'error', 4000);
+      toast(res.message ? `Could not save this update — ${res.message}` : 'Could not save this update — check your connection and try again', 'error', 5000);
     } else {
       toast('You do not have permission to update this trip', 'error');
     }
@@ -1560,7 +1587,7 @@ async function driverAdvanceTrip(tripId, status) {
     if (res.reason === 'transition') {
       toast(`Cannot change status from "${res.from.replace('_',' ')}" to "${status.replace('_',' ')}" — trips can only move forward`, 'error');
     } else if (res.reason === 'save') {
-      toast('Could not save this update — check your connection and try again', 'error', 4000);
+      toast(res.message ? `Could not save this update — ${res.message}` : 'Could not save this update — check your connection and try again', 'error', 5000);
     } else {
       toast('Not authorized for this trip', 'error');
     }
@@ -1828,19 +1855,35 @@ function driverReportBreakdown(truckId) {
   `);
 }
 
-function submitDriverBreakdown(truckId) {
+async function submitDriverBreakdown(truckId) {
   const desc = document.getElementById('bd_desc').value.trim();
   if (!desc) { toast('Please describe the issue', 'error'); return; }
   const loc = sanitize(document.getElementById('bd_loc').value.trim());
   const truck = state.db.trucks.find(t=>t.id===truckId);
+  const truckSnapshot = truck ? { ...truck } : null;
   if (truck) truck.status = 'breakdown';
-  state.db.maintenance.push({
+  const ticket = {
     id: uid('MNT'), truckId, type:'Breakdown',
     desc: loc ? `${desc} (Location: ${loc})` : desc,
     priority:'critical', status:'open', date:new Date().toISOString(),
     cost:0, tech:'', resolvedDate:null, reportedByDriver:true,
-  });
-  scheduleSave(); buildBadges(); buildAlerts();
+  };
+  state.db.maintenance.push(ticket);
+  buildBadges(); buildAlerts();
+  toast('Saving…', 'info', 1200);
+
+  const res = await saveNowAwaited();
+  if (!res.ok) {
+    // Roll back the optimistic local change so the UI matches reality —
+    // a breakdown report is safety-critical and must not silently "succeed".
+    if (truck && truckSnapshot) Object.assign(truck, truckSnapshot);
+    const idx = state.db.maintenance.indexOf(ticket);
+    if (idx > -1) state.db.maintenance.splice(idx, 1);
+    buildBadges(); buildAlerts();
+    toast('Could not submit breakdown report — check your connection and try again', 'error', 5000);
+    return;
+  }
+
   addAudit(state.profile.username, 'Driver Breakdown Report', `${truckName(truckId)} — ${desc.slice(0,60)}`);
   closeModal();
   toast('Breakdown reported — dispatch notified', 'error');
