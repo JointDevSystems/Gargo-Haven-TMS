@@ -1,7 +1,6 @@
 'use strict';
 
-const FINANCE_PIN   = '2026';
-const SETTINGS_PASS = '2026';
+
 const IDLE_TIMEOUT  = 15 * 60 * 1000;
 
 const SUPABASE_URL = 'https://okisjizcyidvvwdwehaa.supabase.co';
@@ -382,6 +381,9 @@ function scheduleSave() {
     state._saveDebounce = null;
   }, 300);
 }
+
+const FINANCE_PIN   = '2026';
+const SETTINGS_PASS = '2026';
 
 
 function remapSeedIds(db) {
@@ -2393,9 +2395,7 @@ function downloadBulkTemplate() {
   a.click();
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 14  MAINTENANCE
-────────────────────────────────────────────────────────────────── */
+
 let _maintFilter='all';
 function filterMaint(f,btn){ _maintFilter=f; document.querySelectorAll('#sec-maintenance .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderMaint(f); }
 
@@ -2502,9 +2502,7 @@ function addFuelLog() {
   toast(`Fuel log saved — ${fmtKsh(litres*price)}`, 'success');
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 16  SHUTOUT
-────────────────────────────────────────────────────────────────── */
+
 let _shutoutFilter='all';
 function filterShutout(f,btn){ _shutoutFilter=f; document.querySelectorAll('#sec-shutout .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderShutout(f); }
 
