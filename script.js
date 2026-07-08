@@ -171,7 +171,7 @@ function seedData() {
 
 
 
-/* ---- row <-> app-object mappers -------------------------------- */
+
 function truckToRow(t)  { return { id:t.id, reg:t.reg, make:t.make, type:t.type, year:t.year, colour:t.colour, status:t.status, fuel_pct:Math.round(t.fuelPct), mileage:t.mileage, last_service:t.lastService, next_service:t.nextService, notes:t.notes, licence_plate:t.licencePlate, vin:t.vin, img:t.img||'' }; }
 function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type, year:r.year, colour:r.colour, status:r.status, fuelPct:r.fuel_pct, mileage:r.mileage, driver:null, lastService:r.last_service, nextService:r.next_service, notes:r.notes||'', img:r.img||'', licencePlate:r.licence_plate, vin:r.vin||'' }; }
 
@@ -211,7 +211,7 @@ function allocFromRow(r){ return { id:r.id, name:r.name, desc:r.description, wei
 
 function auditToRow(a) { return { username:a.user, action:a.action, detail:a.detail, time:a.time }; }
 
-/* ---- generic upsert helper -------------------------------------- */
+
 async function upsertRows(table, rows, opts) {
   if (!rows || !rows.length) return;
   const { error } = await supabase.from(table).upsert(rows, opts || {});
@@ -327,7 +327,7 @@ async function saveDB() {
   if (!state.db) return;
   const db = state.db;
   try {
-    // Parents before children, to satisfy foreign keys.
+   
     await upsertRows('shipping_lines', db.shippingLines.map(lineToRow));
     await upsertRows('trucks',         db.trucks.map(truckToRow));
     await upsertRows('drivers',        db.drivers.map(driverToRow));
@@ -462,7 +462,7 @@ async function initDB() {
   if (loaded) {
     state.db = loaded;
   } else {
-    // Provide empty structure – no seed data
+   
     state.db = {
       trucks: [],
       drivers: [],
@@ -597,7 +597,7 @@ function applyRoleUI() {
     const sec = n.getAttribute('data-section');
     n.style.display = sidebarAllowed.includes(sec) ? '' : 'none';
   });
-  // Dashboard is admin-only, full stop.
+ 
   const dashBtn=document.querySelector('.nav-item[data-section="dashboard"]');
   if (dashBtn) dashBtn.style.display='none';
 
@@ -634,9 +634,7 @@ function validateEmail(email) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 function validatePhone(phone) { return /^\+?[0-9\s\-()]{7,20}$/.test(phone); }
 function sanitize(str) { if(!str)return ''; return str.replace(/[<>]/g,''); }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 4  TOAST SYSTEM
-────────────────────────────────────────────────────────────────── */
+
 function toast(msg, type='info', dur=3200) {
   const icons={ success:'✓', error:'✕', warning:'⚠', info:'ℹ' };
   const el=document.createElement('div');
@@ -647,9 +645,7 @@ function toast(msg, type='info', dur=3200) {
   setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),350); }, dur);
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 5  LOADER
-────────────────────────────────────────────────────────────────── */
+
 const LOAD_STEPS = [
   [300,  'Connecting to Supabase…'],
   [700,  'Loading fleet database…'],
@@ -667,7 +663,7 @@ async function runLoader() {
 
   await initDB();
 
-  // Check for existing Supabase Auth session
+
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session && session.user) {
@@ -712,9 +708,7 @@ async function runLoader() {
   });
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 6  SUPABASE AUTH LOGIN
-────────────────────────────────────────────────────────────────── */
+
 async function loadUserProfile(userId) {
   try {
     const { data: profile, error } = await supabase
@@ -919,9 +913,7 @@ function togglePwVis(inputId, btn) {
   if(circle) circle.setAttribute('r', inp.type==='text'?'1':'3');
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 7  SHELL BOOT
-────────────────────────────────────────────────────────────────── */
+
 function bootShell() {
 
   if (isDriver()) {
@@ -1020,8 +1012,7 @@ function buildAlerts() {
     alerts.push({ type:'warn', msg: `Licence expiry — ${d.name}: ${days} days remaining` });
   });
 
-  // Sort so driver-reported breakdowns always float to the very top,
-  // followed by other critical issues, then general warnings.
+
   const priorityOrder = { driver_breakdown:0, crit:1, warn:2 };
   alerts.sort((a,b)=>(priorityOrder[a.type]??9)-(priorityOrder[b.type]??9));
 
@@ -1042,9 +1033,7 @@ function toggleAlerts() {
   panel.classList.toggle('open', state.alertsOpen);
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 8  NAVIGATION
-────────────────────────────────────────────────────────────────── */
+
 const SECTION_META = {
   dashboard:['Operations','Dashboard'], trucks:['Fleet Management','Trucks'], drivers:['Fleet Management','Drivers'],
   trips:['Fleet Management','Active Trips'], dispatch:['Operations','Dispatch Console'],
@@ -1113,9 +1102,7 @@ const sectionRenderers = {
 
 function toggleSidebar() { document.body.classList.toggle('sidebar-open'); }
 
-/* ─────────────────────────────────────────────────────────────────
-   § 9  DASHBOARD
-────────────────────────────────────────────────────────────────── */
+
 function renderDashboard() {
   const db=state.db;
   const trucks=db.trucks, trips=db.trips, maint=db.maintenance;
@@ -1184,9 +1171,7 @@ function renderActivityFeed(f){
   }
 }
 
-/* ─────────────────────────────────────────────────────────────────
-   § 10  TRUCKS
-────────────────────────────────────────────────────────────────── */
+
 let _truckFilter='all';
 function filterTrucks(f,btn){ _truckFilter=f; document.querySelectorAll('#sec-trucks .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderTrucks(f); }
 
@@ -1254,9 +1239,7 @@ function saveTruck() {
   toast(`${reg} added to fleet`, 'success');
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 11  DRIVERS
-────────────────────────────────────────────────────────────────── */
+
 let _driverFilter='all';
 function filterDrivers(f,btn){ _driverFilter=f; document.querySelectorAll('#sec-drivers .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderDrivers(f); }
 
@@ -1338,9 +1321,7 @@ function saveDriver() {
   toast(`${name} added`, 'success');
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   § 12  TRIPS
-────────────────────────────────────────────────────────────────── */
+
 let _tripFilter='active';
 function filterTrips(f,btn){ _tripFilter=f; document.querySelectorAll('#sec-trips .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderTrips(f); }
 
@@ -1588,7 +1569,7 @@ async function driverAdvanceTrip(tripId, status) {
   renderDriverPortal();
 }
 
-/* ── Completed Trips tab ────────────────────────────────────────── */
+
 function dpRenderCompletedTripsTab(el, driver) {
   const trips = state.db.trips
     .filter(t=>t.driverId===driver.id && t.status==='completed')
@@ -1864,7 +1845,7 @@ function submitDriverBreakdown(truckId) {
   renderDriverPortal();
 }
 
-/* ── Fuel Log tab ───────────────────────────────────────────────── */
+
 function dpRenderFuelTab(el, driver) {
   const logs = state.db.fuel.filter(f=>f.driverId===driver.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
   el.innerHTML = `
@@ -1916,7 +1897,7 @@ function dpAddFuelLog() {
   renderDriverPortal();
 }
 
-/* ── Requisitions tab ───────────────────────────────────────────── */
+
 function dpRenderReqTab(el, driver) {
   const mine = state.db.requisitions.filter(r=>r.requesterId===state.profile.id || r.requester===state.profile.name || r.requester===driver.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
   el.innerHTML = `
@@ -1958,7 +1939,7 @@ function dpSaveRequisition() {
   renderDriverPortal();
 }
 
-/* ── Workshop tab ───────────────────────────────────────────────── */
+
 function dpRenderWorkshopTab(el, driver) {
   const truck = driver.truckId ? state.db.trucks.find(t=>t.id===driver.truckId) : null;
   const mine = truck ? state.db.workshop.filter(w=>w.truckId===truck.id).sort((a,b)=>new Date(b.reported)-new Date(a.reported)) : [];
