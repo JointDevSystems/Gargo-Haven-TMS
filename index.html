@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gargo · Fleet Operations</title>
 
-    <!-- PWA -->
+    
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#06080F" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -15,15 +15,15 @@
     <link rel="icon" href="icons/icon-192.png" />
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
 
-    <!-- Supabase SDK -->
+   
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
     </script>
 
-    <!-- Leaflet (OpenStreetMap) — free, no API key required -->
+   
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
-    <!-- Google Fonts -->
+  
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -50,7 +50,7 @@
         </div>
     </div>
 
-    <!-- ═══════════ LOGIN ═══════════ -->
+    
     <div id="loginScreen" style="display:none">
         <div class="login-split">
             <div class="login-panel-left">
@@ -105,10 +105,10 @@
         </div>
     </div>
 
-    <!-- ═══════════ SHELL ═══════════ -->
+  
     <div class="shell" id="shell" style="display:none">
 
-        <!-- ══ TOP COMMAND RAIL ══ -->
+        
         <div class="admin-rail" id="adminRail">
             <div class="admin-rail-left">
                 <div class="rail-brand">
@@ -214,10 +214,10 @@
             </div>
         </div>
 
-        <!-- ══ BODY ══ -->
+      
         <div class="body-wrap">
 
-            <!-- ══ OPS SIDEBAR ══ -->
+            
             <aside class="sidebar" id="sidebar">
                 <div class="sidebar-section-head">
                     <div class="sidebar-section-label">Operations Centre</div>
@@ -296,7 +296,7 @@
                 </div>
             </aside>
 
-            <!-- ══ CONTENT AREA ══ -->
+         
             <main class="main">
                 <div class="section-topbar" id="sectionTopbar">
                     <div class="section-topbar-left">
@@ -325,7 +325,7 @@
                     </div>
                 </div>
 
-                <!-- ALERTS PANEL -->
+               
                 <div class="alerts-panel" id="alertsPanel">
                     <div class="alerts-title">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
@@ -335,10 +335,10 @@
                     <div id="alertsList"></div>
                 </div>
 
-                <!-- ══ SECTIONS ══ -->
+               
                 <div class="content">
 
-                    <!-- DASHBOARD -->
+                   
                     <section class="section active" id="sec-dashboard">
                         <div class="sec-toolbar">
                             <div class="sec-title">Operations Overview</div>
@@ -452,7 +452,7 @@
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
                             Dispatch Console is the single place trip details get finalised — new manual orders, bulk uploads, and imported Public Bookings all get their truck, driver, and container details completed here. Allocation only pairs a driver with a truck.
                         </div>
-                        <!-- Single Dispatch Tab -->
+                       
                         <div id="dispatchTabSingle">
                             <div class="panel" id="dispatchAwaitingPanel" style="margin-bottom:14px">
                                 <div class="panel-head"><span class="panel-title">Awaiting Dispatch</span><span class="panel-meta" id="awaitingDispatchMeta"></span></div>
@@ -524,7 +524,7 @@
                                 <div id="dispatchQueue"></div>
                             </div>
                         </div>
-                        <!-- Bulk Upload Tab -->
+                   
                         <div id="dispatchTabBulk" style="display:none">
                             <div class="form-card" style="max-width:600px">
                                 <div class="form-card-head">Bulk Container Dispatch</div>
@@ -554,7 +554,7 @@
                         </div>
                     </section>
 
-                    <!-- MAINTENANCE -->
+                    
                     <section class="section" id="sec-maintenance">
                         <div class="sec-toolbar">
                             <div class="sec-title">Maintenance Log</div>
@@ -761,9 +761,7 @@
                                 <div id="allocRecommendations"></div>
                             </div>
                         </div>
-                        <!-- Manual Allocation — driver ↔ truck pairing ONLY. Trip and
-                             container details are the Dispatch Console's job (see the
-                             Dispatch section notice + Awaiting Dispatch queue). -->
+                        
                         <div id="allocTabManual" style="display:none">
                             <div class="ops-notice" style="margin-bottom:14px">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
@@ -792,17 +790,17 @@
                                 <div id="adminStatusPanel"></div>
                             </div>
                         </div>
-                        <!-- Requisition Approvals (Admin) -->
+                        
                         <div id="allocTabRequisitions" style="display:none">
                             <div id="adminReqList"></div>
                         </div>
-                        <!-- Workshop Approvals (Admin) -->
+                       
                         <div id="allocTabWorkshop" style="display:none">
                             <div id="adminWorkshopList"></div>
                         </div>
                     </section>
 
-                    <!-- WORK ANALYSIS -->
+                   
                     <section class="section" id="sec-workanalysis">
                         <div class="sec-toolbar">
                             <div class="sec-title-admin">Work Type Analysis</div>
@@ -831,7 +829,7 @@
                         </div>
                     </section>
 
-                    <!-- REPORTS -->
+                  
                     <section class="section" id="sec-reports">
                         <div class="sec-toolbar">
                             <div class="sec-title-admin">Reports &amp; Analytics</div>
@@ -847,7 +845,7 @@
                         <div id="reportContent"></div>
                     </section>
 
-                    <!-- TRIP REPORTS & AUDIT CENTRE (ADMIN ONLY) -->
+                   
                     <section class="section" id="sec-tripreports">
                         <div class="sec-toolbar">
                             <div class="sec-title-admin">
@@ -862,7 +860,7 @@
 
                         <div class="ops-notice" style="margin-bottom:14px">🔒 Restricted to System Administrators. Every query and export run here is written to the Audit Log for accountability.</div>
 
-                        <!-- TRIP REPORTS TAB -->
+                       
                         <div id="trcTab-trips">
                             <div class="panel" style="padding:16px;margin-bottom:14px">
                                 <div class="trc-period-row">
@@ -900,7 +898,7 @@
                             </div>
                         </div>
 
-                        <!-- AUDIT LOG TAB -->
+                       
                         <div id="trcTab-audit" style="display:none">
                             <div class="panel" style="padding:16px;margin-bottom:14px">
                                 <div class="trc-period-row">
@@ -934,7 +932,7 @@
                         </div>
                     </section>
 
-                    <!-- LIVE TRACKING -->
+                   
                     <section class="section" id="sec-livetracking">
                         <div class="sec-toolbar">
                             <div class="sec-title-admin">Live Tracking</div>
@@ -971,7 +969,7 @@
                         </div>
                     </section>
 
-                    <!-- USER MANAGEMENT -->
+                   
                     <section class="section" id="sec-usermgmt">
                         <div class="sec-toolbar">
                             <div class="sec-title-admin">
@@ -1002,7 +1000,7 @@
                         </div>
                     </section>
 
-                    <!-- SETTINGS -->
+                    
                     <section class="section" id="sec-settings">
                         <div class="sec-toolbar">
                             <div class="sec-title-admin">
@@ -1064,7 +1062,7 @@
                         </div>
                     </section>
 
-                    <!-- Public Bookings -->
+                  
 <section class="section" id="sec-publicbookings">
   <div class="sec-toolbar">
     <div class="sec-title">Public Bookings</div>
@@ -1127,22 +1125,22 @@
         </div>
     </div>
 
-    <!-- ══ SETTINGS VAULT MODAL ══ -->
+    
     <div class="modal-backdrop" id="settingsVaultOverlay">
         <div class="modal-box vault-modal" onclick="event.stopPropagation()">
             <div class="modal-hdr">
                 <div class="modal-title" style="display:flex;align-items:center;gap:9px">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83"/></svg>
-                    Settings Vault
+                    Settings 
                 </div>
             </div>
             <div class="modal-body">
                 <div class="vault-banner">
-                    <div class="vault-banner-label">RESTRICTED · SYSTEM SETTINGS</div>
-                    <div class="vault-banner-desc">System settings contain sensitive configuration. Admin vault password required to proceed.</div>
+                    <div class="vault-banner-label">SETTINGS</div>
+                    <div class="vault-banner-desc">System settings contain sensitive configuration. Admin password required to proceed.</div>
                 </div>
                 <div class="fg">
-                    <label>Vault Password</label>
+                    <label>pin</label>
                     <div class="pw-wrap">
                         <input type="password" id="settingsVaultPin" placeholder="Enter vault password" autocomplete="off" onkeydown="if(event.key==='Enter')submitSettingsVault()" />
                         <button class="pw-eye" type="button" onclick="togglePwVis('settingsVaultPin',this)" tabindex="-1">
@@ -1161,7 +1159,7 @@
 
     
 
-    <!-- ══ DRIVER PORTAL (role: driver) ══ -->
+   
     <div class="shell" id="driverPortal" style="display:none;flex-direction:column">
         <div class="section-topbar">
             <div class="section-topbar-left">
