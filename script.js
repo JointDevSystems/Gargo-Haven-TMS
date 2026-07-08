@@ -394,10 +394,7 @@ function scheduleSave() {
   }, 300);
 }
 
-// Like scheduleSave(), but returns a promise that resolves once the save
-// actually completes, so callers can confirm success/failure before telling
-// the user their action worked (used for safety-critical actions like
-// breakdown reporting, where a silent failure is unacceptable).
+
 function saveNowAwaited() {
   if (state._saveDebounce) { clearTimeout(state._saveDebounce); state._saveDebounce = null; }
   return saveDB();

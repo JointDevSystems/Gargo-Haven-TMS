@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'gargo-shell-v1';
+const CACHE_VERSION = 'gargo-shell-v2';
 const SHELL_FILES = [
   './',
   './index.html',
