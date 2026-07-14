@@ -253,6 +253,11 @@
                         Public Bookings
                       <span class="nav-badge" id="badge-publicbookings"></span>
                     </button>
+                    <button class="nav-item" onclick="showSection('docverification',this)" data-section="docverification">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+                        Document Verification
+                      <span class="nav-badge" id="badge-docverification"></span>
+                    </button>
                     <button class="nav-item" onclick="showSection('maintenance',this)" data-section="maintenance">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
                         Maintenance <span class="nav-badge warn" id="badge-maintenance"></span>
@@ -1076,6 +1081,29 @@
   <div id="publicBookingsList"></div>
 </section>
 
+<!-- DOCUMENT VERIFICATION -->
+<section class="section" id="sec-docverification">
+  <div class="sec-toolbar">
+    <div class="sec-title">Document Verification</div>
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="filterDocVerification('pending_review',this)">Pending Review</button>
+      <button class="filter-btn" onclick="filterDocVerification('verified',this)">Verified</button>
+      <button class="filter-btn" onclick="filterDocVerification('rejected',this)">Rejected</button>
+      <button class="filter-btn" onclick="filterDocVerification('all',this)">All</button>
+      <button class="action-btn" onclick="renderDocVerification()">↻ Refresh</button>
+    </div>
+  </div>
+  <div class="ops-notice" style="margin-bottom:14px">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+    Guarantee forms, release orders, and delivery orders uploaded by clearers/forwarders/transporters against a booking reference. Verify before storage space is allocated.
+  </div>
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-head"><span class="panel-title">Depot Storage Availability</span></div>
+    <div id="storageAvailabilityList" style="padding:12px"></div>
+  </div>
+  <div id="docVerificationList"></div>
+</section>
+
                 </div>
             </main>
         </div>
@@ -1190,5 +1218,6 @@
     <div id="toastStack"></div>
 
     <script src="script.js"></script>
+    <script src="booking-documents.js"></script>
 </body>
 </html>
