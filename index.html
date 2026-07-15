@@ -1,599 +1,1223 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<meta name="description" content="Jastar Logistics Limited — East Africa's trusted empty container logistics specialists, operating from the Port of Mombasa, Kenya since 2015."/>
-<meta name="keywords" content="empty container logistics, Mombasa, Kenya, port logistics, container transport, KPA, depot, CFS"/>
-<meta property="og:title" content="Jastar Logistics Limited — Mombasa, Kenya"/>
-<meta property="og:description" content="Empty container logistics specialists. Depot, Port, CFS and client movements — expertly managed from Mombasa."/>
-<meta property="og:type" content="website"/>
-<title>Jastar Logistics Limited — Mombasa, Kenya</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500;1,600;1,700&family=DM+Sans:ital,opsz,wght@0,9..40,200;0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,300;1,9..40,400&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
-<link rel="icon" type="image/png" href="https://res.cloudinary.com/dajkaiwyx/image/upload/v1777991880/Jastar_Logo_qivitd.jpg">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gargo · Fleet Operations</title>
+
+    
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#06080F" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Gargo" />
+    <link rel="icon" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+   
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js">
+    </script>
+
+   
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+  
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+    <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 
-<!-- FLOATING CTA -->
-<div class="float-cta" id="floatCta" aria-label="Quick contact">
-  <a href="#contact" class="fcta-btn">Request a Quote →</a>
-  <a href="tel:+254723672031" class="fcta-phone">📞 +254 723 672 031</a>
-</div>
-
-<!-- MOBILE MENU -->
-<div class="mobile-menu" id="mobileMenu" role="dialog" aria-modal="true" aria-label="Site navigation">
-  <button class="mobile-close" id="mobileCloseBtn" aria-label="Close navigation menu">✕</button>
-  <nav class="mobile-menu-items" aria-label="Mobile navigation">
-    <a href="#about">About Us</a>
-    <a href="#services">Services</a>
-    <a href="#coverage">Coverage</a>
-    <a href="#director">Leadership</a>
-    <a href="#contact">Contact</a>
-    <a href="#contact" class="mob-cta">Request a Quote →</a>
-  </nav>
-  <div class="mobile-menu-footer">Mombasa · Kenya · Est. 2015</div>
-</div>
-
-<!-- TOPBAR -->
-<div class="topbar" role="banner">
-  <div class="topbar-left">
-    <span>📍 Pwani Plaza, Kilindini, Mombasa</span>
-    <div class="topbar-divider" aria-hidden="true"></div>
-    <span>📞 <a href="tel:+254723672031">+254 723 672 031</a></span>
-    <div class="topbar-divider" aria-hidden="true"></div>
-    <span>✉ <a href="mailto:jastarlogisticslimited@gmail.com">jastarlogisticslimited@gmail.com</a></span>
-  </div>
-  <div class="topbar-right">Mon – Sat &nbsp;·&nbsp; 7:00 AM – 6:00 PM EAT</div>
-</div>
-
-<!-- MAIN NAV -->
-<nav id="mainNav" aria-label="Main navigation">
-  <div class="nav-inner">
-    <a href="#" class="nav-logo" aria-label="Jastar Logistics Limited — Home">
-      <img src="https://res.cloudinary.com/dajkaiwyx/image/upload/v1777991880/Jastar_Logo_qivitd.jpg" alt="Jastar Logistics Limited logo" width="46" height="46">
-      <div class="nav-logo-text">
-        <span class="brand">Jastar Logistics Limited</span>
-        <span class="sub">Mombasa · Kenya · Est. 2015</span>
-      </div>
-    </a>
-    <ul class="nav-links" role="list">
-      <li><a href="#about">About Us</a></li>
-      <li><a href="#services">Our Services</a></li>
-      <li><a href="#coverage">Coverage</a></li>
-      <li><a href="#director">Leadership</a></li>
-      <li><a href="#contact">Contact Us</a></li>
-    </ul>
-    <div class="nav-cta">
-      <a href="tel:+254723672031" class="phone-nav" aria-label="Call us">📞 +254 723 672 031</a>
-      <a href="#contact" class="btn-nav">Request a Quote →</a>
-    </div>
-    <button class="hamburger" id="hamburgerBtn" aria-label="Open navigation menu" aria-expanded="false" aria-controls="mobileMenu">
-      <span></span><span></span><span></span>
-    </button>
-  </div>
-</nav>
-
-<!-- ══════════ HERO ══════════ -->
-<section id="hero" aria-label="Hero banner">
-  <div class="hero-orb hero-orb-1" aria-hidden="true"></div>
-  <div class="hero-orb hero-orb-2" aria-hidden="true"></div>
-  <div class="hero-glow"  aria-hidden="true"></div>
-  <div class="hero-glow2" aria-hidden="true"></div>
-  <canvas class="hero-canvas" id="heroCanvas" aria-hidden="true"></canvas>
-
-  <div class="hero-inner">
-    <div class="hero-left">
-      <div class="hero-badge" aria-label="Company overview">
-        <div class="hero-badge-dot" aria-hidden="true"></div>
-        Empty Container Logistics &nbsp;·&nbsp; Est. 2015 &nbsp;·&nbsp; Mombasa, Kenya
-      </div>
-
-      <!-- CINEMATIC SPLIT-WORD TITLE -->
-      <h1 class="hero-title">
-        <span class="hero-title-line">
-          <span class="hero-title-word">Connecting</span>
-        </span>
-        <span class="hero-title-line">
-          <em class="hero-title-word">Kenya's</em>
-        </span>
-        <span class="hero-title-line">
-          <span class="hero-title-word">Supply Chain.</span>
-        </span>
-      </h1>
-
-      <span class="hero-rule" aria-hidden="true"></span>
-
-      <p class="hero-desc">East Africa's trusted partner for empty container logistics — <span class="hero-cycler" aria-live="polite">Depot to Port.</span></p>
-
-      <div class="hero-actions">
-        <a href="#services" class="btn-gold">Our Services →</a>
-        <a href="#contact" class="btn-ghost">Get a Quote</a>
-      </div>
-
-      <div class="trust-row" aria-label="Key assurances">
-        <div class="trust-item"><div class="trust-check" aria-hidden="true">✓</div>Port-cleared drivers</div>
-        <div class="trust-item"><div class="trust-check" aria-hidden="true">✓</div>20ft · 40ft · HC · Reefer</div>
-        <div class="trust-item"><div class="trust-check" aria-hidden="true">✓</div>No hidden charges</div>
-      </div>
+  
+    <div class="loader" id="loader">
+        <div class="loader-inner">
+            <div class="loader-emblem">
+                <svg width="56" height="56" viewBox="0 0 48 48" fill="none">
+                    <polygon points="24,4 44,16 44,32 24,44 4,32 4,16" stroke="#C9A227" stroke-width="1.5" fill="none" opacity="0.3"/>
+                    <polygon points="24,10 38,18 38,30 24,38 10,30 10,18" stroke="#C9A227" stroke-width="1" fill="none" opacity="0.55"/>
+                    <polygon points="24,16 32,20 32,28 24,32 16,28 16,20" stroke="#C9A227" stroke-width="0.8" fill="none" opacity="0.8"/>
+                    <text x="24" y="28" text-anchor="middle" font-family="'Cormorant Garamond',serif" font-size="11" font-weight="700" fill="#C9A227" letter-spacing="2">G</text>
+                </svg>
+            </div>
+            <div class="loader-wordmark">GARGO</div>
+            <div class="loader-tagline">FLEET OPERATIONS SYSTEM · MOMBASA</div>
+            <div class="loader-bar-wrap"><div class="loader-bar"><div class="loader-fill" id="loaderFill"></div></div></div>
+            <div class="loader-status" id="loaderStatus">Connecting to Supabase…</div>
+        </div>
     </div>
 
-    <div class="hero-card reveal" aria-label="Company at a glance">
-      <div class="hero-card-title">Performance Snapshot</div>
-      <div class="stat-grid">
-        <div class="stat-cell">
-          <span class="stat-num" data-target="10" data-suffix="+">0+</span>
-          <div class="stat-lbl">Years Active</div>
+    
+    <div id="loginScreen" style="display:none">
+        <div class="login-split">
+            <div class="login-panel-left">
+                <div class="login-left-brand">
+                    <svg width="40" height="40" viewBox="0 0 48 48" fill="none">
+                        <polygon points="24,4 44,16 44,32 24,44 4,32 4,16" stroke="#C9A227" stroke-width="1.5" fill="none" opacity="0.4"/>
+                        <polygon points="24,10 38,18 38,30 24,38 10,30 10,18" stroke="#C9A227" stroke-width="1" fill="none" opacity="0.65"/>
+                        <text x="24" y="28" text-anchor="middle" font-family="'Cormorant Garamond',serif" font-size="11" font-weight="700" fill="#C9A227" letter-spacing="2">G</text>
+                    </svg>
+                    <div>
+                        <div class="login-brand-name">GARGO</div>
+                        <div class="login-brand-sub">FLEET OPERATIONS</div>
+                    </div>
+                </div>
+                <div class="login-left-copy">
+                    <!--<div class="login-stat-row">
+                        <div class="login-stat"><div class="login-stat-n" id="ls-fleet">—</div><div class="login-stat-l">Fleet Trucks</div></div>
+                        <div class="login-stat"><div class="login-stat-n" id="ls-drivers">—</div><div class="login-stat-l">Drivers</div></div>
+                        <div class="login-stat"><div class="login-stat-n" id="ls-trips">—</div><div class="login-stat-l">Active Trips</div></div>
+                    </div>-->
+                    <!--<p class="login-blurb">Gargo Fleet Operations — Mombasa's leading container haulage management platform. Real-time dispatch, allocation, and compliance in one secure system.</p>-->
+                </div>
+                <div class="login-left-foot">gargo.co.ke · Mombasa, Kenya · EAT (UTC+3)</div>
+            </div>
+            <div class="login-panel-right">
+                <div class="login-form-wrap">
+                    <div class="login-form-head">
+                        <div class="login-form-title">Sign in</div>
+                        <div class="login-form-sub">Authorized personnel only</div>
+                    </div>
+                    <div class="login-field">
+                        <label>Username</label>
+                        <input type="text" id="loginUser" placeholder="Enter username" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()" />
+                    </div>
+                    <div class="login-field">
+                        <label>Password</label>
+                        <div class="pw-wrap">
+                            <input type="password" id="loginPass" placeholder="Enter password" autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()" />
+                            <button class="pw-eye" type="button" onclick="togglePwVis('loginPass',this)" tabindex="-1" aria-label="Show password">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button class="login-btn" onclick="doLogin()">
+                        Sign In
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    </button>
+                    <div class="login-error" id="loginError"></div>
+                    <div class="login-demo-hint">Use your email and password to sign in</div>
+                </div>
+            </div>
         </div>
-        <div class="stat-cell">
-          <span class="stat-num">24/7</span>
-          <div class="stat-lbl">Operations</div>
+    </div>
+
+  
+    <div class="shell" id="shell" style="display:none">
+
+        
+        <div class="admin-rail" id="adminRail">
+            <div class="admin-rail-left">
+                <div class="rail-brand">
+                    <svg width="20" height="20" viewBox="0 0 48 48" fill="none">
+                        <polygon points="24,4 44,16 44,32 24,44 4,32 4,16" stroke="#C9A227" stroke-width="2" fill="none" opacity="0.5"/>
+                        <polygon points="24,10 38,18 38,30 24,38 10,30 10,18" stroke="#C9A227" stroke-width="1.2" fill="none" opacity="0.7"/>
+                        <text x="24" y="28" text-anchor="middle" font-family="'Cormorant Garamond',serif" font-size="13" font-weight="700" fill="#C9A227">G</text>
+                    </svg>
+                    <span class="rail-brand-name">GARGO</span>
+                    <span class="rail-brand-sep">·</span>
+                    <span class="rail-brand-sub">Fleet Ops</span>
+                </div>
+                <nav class="admin-nav" id="adminNav">
+                    <div class="admin-nav-group">
+                        <span class="admin-nav-group-label">Finance</span>
+                        <button class="admin-nav-item" onclick="showAdminSection('invoicing',this)" id="adminBtn-invoicing">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                            Invoicing
+                            <span class="rail-badge" id="badge-invoices"></span>
+                            <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </button>
+                    </div>
+                    <div class="admin-nav-group">
+                        <span class="admin-nav-group-label">Intelligence</span>
+                        <button class="admin-nav-item" onclick="showAdminSection('allocation',this)" id="adminBtn-allocation">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+                            Allocation
+                            <span class="rail-badge" id="badge-allocation"></span>
+                        </button>
+                        <button class="admin-nav-item" onclick="showAdminSection('workanalysis',this)" id="adminBtn-workanalysis">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                            Analysis
+                        </button>
+                        <button class="admin-nav-item" onclick="showAdminSection('reports',this)" id="adminBtn-reports">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                            Reports
+                        </button>
+                        <button class="admin-nav-item" onclick="showAdminSection('tripreports',this)" id="adminBtn-tripreports">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17V9M13 17V5M17 17v-4M4 17h16"/></svg>
+                            Trip Reports
+                            <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </button>
+                    </div>
+                    <div class="admin-nav-group">
+                        <span class="admin-nav-group-label">Platform</span>
+                        <button class="admin-nav-item" onclick="showAdminSection('livetracking',this)" id="adminBtn-livetracking">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            Live Tracking
+                        </button>
+                        <button class="admin-nav-item" onclick="showAdminSection('usermgmt',this)" id="adminBtn-usermgmt">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                            Users
+                            <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </button>
+                        <button class="admin-nav-item" onclick="requireSettingsVault()" id="adminBtn-settings">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.6 9"/></svg>
+                            Settings
+                            <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </button>
+                    </div>
+                </nav>
+            </div>
+            <div class="admin-rail-right">
+                <div class="rail-live">
+                    <div class="live-dot"></div>
+                    <div class="rail-clock" id="liveTime">--:--</div>
+                    <div class="rail-tz">EAT</div>
+                </div>
+                <div class="search-wrap">
+                    <svg class="search-icon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input class="search-input" id="globalSearch" placeholder="Search trucks, drivers, containers…" onkeydown="if(event.key==='Enter')handleSearch(this.value)" />
+                    <div class="search-results-panel" id="searchResults" style="display:none"></div>
+                </div>
+                <button class="rail-alert-btn" onclick="toggleAlerts()" title="Alerts" id="alertBtn">
+                    <svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                    <div class="alert-dot" id="alertDot" style="display:none"></div>
+                </button>
+                <div class="user-chip-rail" onclick="toggleUserMenu()">
+                    <div class="user-av-rail" id="railUserAv">AD</div>
+                    <div class="user-info-rail">
+                        <div class="user-name-rail" id="railUserName">Admin</div>
+                        <div class="user-role-rail" id="railUserRole">System Administrator</div>
+                    </div>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.4"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="user-menu" id="userMenu" style="display:none">
+                    <div class="user-menu-header" id="userMenuHeader"></div>
+                    <div class="user-menu-divider"></div>
+                    <div class="user-menu-item" onclick="showAdminSection('usermgmt',null);closeUserMenu()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                        Manage Users
+                    </div>
+                    <div class="user-menu-item" onclick="showChangePasswordModal();closeUserMenu()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        Change Password
+                    </div>
+                    <div class="user-menu-divider"></div>
+                    <div class="user-menu-item danger" onclick="logout()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                        Sign Out
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="stat-cell">
-          <span class="stat-num" data-target="6" data-suffix="">0</span>
-          <div class="stat-lbl">Service Routes</div>
-        </div>
-        <div class="stat-cell">
-          <span class="stat-num">100%</span>
-          <div class="stat-lbl">Committed</div>
-        </div>
-      </div>
-      <div class="hero-contact-strip">
-        <div class="hcs-item">
-          <div class="hcs-icon" aria-hidden="true">📞</div>
-          <span><a href="tel:+254723672031">+254 723 672 031</a></span>
-        </div>
-        <div class="hcs-item">
-          <div class="hcs-icon" aria-hidden="true">✉️</div>
-          <span><a href="mailto:jastarlogisticslimited@gmail.com">jastarlogisticslimited@gmail.com</a></span>
-        </div>
-        <div class="hcs-item">
-          <div class="hcs-icon" aria-hidden="true">📍</div>
-          <span>Pwani Plaza, Kilindini, Mombasa</span>
-        </div>
-      </div>
+
+      
+        <div class="body-wrap">
+
+            
+            <aside class="sidebar" id="sidebar">
+                <div class="sidebar-section-head">
+                    <div class="sidebar-section-label">Operations Centre</div>
+                </div>
+
+                <nav class="sidebar-nav">
+                    <button class="nav-item active" onclick="showSection('dashboard',this)" data-section="dashboard">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+                        Dashboard
+                    </button>
+
+                    <div class="nav-group-label">Fleet Management</div>
+                    <button class="nav-item" onclick="showSection('trucks',this)" data-section="trucks">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                        Trucks <span class="nav-badge" id="badge-trucks"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('drivers',this)" data-section="drivers">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                        Drivers <span class="nav-badge" id="badge-drivers"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('trips',this)" data-section="trips">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Active Trips <span class="nav-badge" id="badge-trips"></span>
+                    </button>
+
+                    <div class="nav-group-label">Operations</div>
+                    <button class="nav-item" onclick="showSection('dispatch',this)" data-section="dispatch">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        Dispatch Console <span class="nav-badge" id="badge-dispatch"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('publicbookings',this)" data-section="publicbookings">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>
+                        Public Bookings
+                      <span class="nav-badge" id="badge-publicbookings"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('docverification',this)" data-section="docverification">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+                        Document Verification
+                      <span class="nav-badge" id="badge-docverification"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('maintenance',this)" data-section="maintenance">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+                        Maintenance <span class="nav-badge warn" id="badge-maintenance"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('fuel',this)" data-section="fuel">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M3 22V4a2 2 0 012-2h10a2 2 0 012 2v18"/><path d="M3 10h14"/><path d="M17 8l4 2v8a2 2 0 01-2 2"/></svg>
+                        Fuel Log
+                    </button>
+
+                    <div class="nav-group-label">Container Ops</div>
+                    <button class="nav-item" onclick="showSection('shutout',this)" data-section="shutout">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg>
+                        Shutout <span class="nav-badge" id="badge-shutout"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('interchange',this)" data-section="interchange">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+                        Interchange <span class="nav-badge" id="badge-interchange"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('shippinglines',this)" data-section="shippinglines">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M2 20a3 3 0 003 3h14a3 3 0 003-3"/><path d="M21 12V7a2 2 0 00-2-2H5a2 2 0 00-2 2v5"/><path d="M2 12h20"/></svg>
+                        Shipping Lines
+                    </button>
+
+                    <div class="nav-group-label">Compliance</div>
+                    <button class="nav-item" onclick="showSection('requisitions',this)" data-section="requisitions">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        Requisitions <span class="nav-badge" id="badge-requisitions"></span>
+                    </button>
+                    <button class="nav-item" onclick="showSection('workshop',this)" data-section="workshop">
+                        <svg class="nav-icon" viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                        Workshop
+                    </button>
+                </nav>
+
+                <div class="sidebar-footer">
+                    <div class="sidebar-footer-label">GARGO FLEET OPS · v4.0</div>
+                    <div class="sidebar-footer-status">
+                        <div class="live-dot"></div>
+                        <span>System live</span>
+                    </div>
+                </div>
+            </aside>
+
+         
+            <main class="main">
+                <div class="section-topbar" id="sectionTopbar">
+                    <div class="section-topbar-left">
+                        <button class="hamburger" onclick="toggleSidebar()"><span></span><span></span><span></span></button>
+                        <div class="section-breadcrumb">
+                            <span class="breadcrumb-area" id="topbarArea">Operations</span>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"><polyline points="9 18 15 12 9 6"/></svg>
+                            <span class="breadcrumb-title" id="topbarTitle">Dashboard</span>
+                        </div>
+                    </div>
+                    <div class="section-topbar-right">
+                        <div class="sync-status synced" id="syncStatus" onclick="handleSyncStatusClick()">
+                            <span class="sync-dot"></span>
+                            <span id="syncLabel">Synced</span>
+                        </div>
+                        <button class="refresh-app-btn" id="refreshAppBtn" onclick="hardRefreshSystem()" title="Refresh the entire system — reloads live data and clears any cached files">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="refreshIcon"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+                            <span>Refresh</span>
+                        </button>
+                        <button class="install-app-btn" id="installAppBtn" onclick="handleInstallClick()" style="display:none">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span>Download App</span>
+                        </button>
+                        <div class="topbar-date" id="todayDate"></div>
+                        <div class="role-chip" id="topbarRoleChip"></div>
+                    </div>
+                </div>
+
+               
+                <div class="alerts-panel" id="alertsPanel">
+                    <div class="alerts-title">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+                        Active Alerts
+                        <button class="alert-close-btn" onclick="toggleAlerts()">✕</button>
+                    </div>
+                    <div id="alertsList"></div>
+                </div>
+
+               
+                <div class="content">
+
+                   
+                    <section class="section active" id="sec-dashboard">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Operations Overview</div>
+                            <div class="filter-row">
+                                <button class="pill active" onclick="filterActivity('all',this)">All</button>
+                                <button class="pill" onclick="filterActivity('dispatch',this)">Dispatch</button>
+                                <button class="pill" onclick="filterActivity('return',this)">Returns</button>
+                                <button class="pill" onclick="filterActivity('issue',this)">Issues</button>
+                            </div>
+                        </div>
+                        <div class="kpi-row" id="kpiRow"></div>
+                        <div class="two-col-grid">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Fleet Status</span><span class="panel-meta" id="fleetStatusMeta"></span></div>
+                                <div id="fleetStatusBars"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Live Trips</span><span class="panel-meta" id="liveTripsCount"></span></div>
+                                <div id="liveTrips"></div>
+                            </div>
+                        </div>
+                        <div class="two-col-grid">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Today's Activity</span></div>
+                                <div id="activityList"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Maintenance Alerts</span></div>
+                                <div id="maintAlerts"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- TRUCKS -->
+                    <section class="section" id="sec-trucks">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Fleet — Trucks</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterTrucks('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterTrucks('available',this)">Available</button>
+                                <button class="filter-btn" onclick="filterTrucks('on_trip',this)">On Trip</button>
+                                <button class="filter-btn" onclick="filterTrucks('breakdown',this)">Breakdown</button>
+                                <button class="filter-btn" onclick="filterTrucks('maintenance',this)">Maintenance</button>
+                                <button class="filter-btn" onclick="filterTrucks('off_duty',this)">Off Duty</button>
+                                <button class="action-btn admin-only-btn" onclick="requireAdminAction(showAddTruckModal,'add_truck')" id="addTruckBtn">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    Add Truck
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="truck-grid" id="truckGrid"></div>
+                    </section>
+
+                    <!-- DRIVERS -->
+                    <section class="section" id="sec-drivers">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Fleet — Drivers</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterDrivers('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterDrivers('available',this)">Available</button>
+                                <button class="filter-btn" onclick="filterDrivers('on_trip',this)">On Trip</button>
+                                <button class="filter-btn" onclick="filterDrivers('off_duty',this)">Off Duty</button>
+                                <button class="filter-btn" onclick="filterDrivers('suspended',this)">Suspended</button>
+                                <button class="action-btn admin-only-btn" onclick="requireAdminAction(showAddDriverModal,'add_driver')">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    Add Driver
+                                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="panel">
+                            <div class="table-wrap">
+                                <table class="data-table">
+                                    <thead><tr>
+                                            <th>Driver</th><th>Phone</th><th>Licence</th><th>Assigned Truck</th>
+                                            <th>Status</th><th>Trips Today</th><th>Current Load</th><th>Location</th><th></th>
+                                        </tr></thead>
+                                    <tbody id="driverTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- TRIPS -->
+                    <section class="section" id="sec-trips">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Active Trips</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterTrips('active',this)">Active</button>
+                                <button class="filter-btn" onclick="filterTrips('on_trip',this)">In Transit</button>
+                                <button class="filter-btn" onclick="filterTrips('delayed',this)">Delayed</button>
+                                <button class="filter-btn" onclick="filterTrips('breakdown',this)">Breakdown</button>
+                                <button class="filter-btn" onclick="filterTrips('completed',this)">Completed</button>
+                                <button class="filter-btn" onclick="filterTrips('all',this)">All</button>
+                            </div>
+                        </div>
+                        <div class="trips-grid" id="tripsList"></div>
+                    </section>
+
+                    <!-- DISPATCH -->
+                    <section class="section" id="sec-dispatch">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Dispatch Console</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="switchDispatchTab('single',this)">Single Dispatch</button>
+                                <button class="filter-btn" onclick="switchDispatchTab('bulk',this)">Bulk Upload</button>
+                            </div>
+                        </div>
+                        <div class="ops-notice" style="margin-bottom:14px">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            Dispatch Console is the single place trip details get finalised — new manual orders, bulk uploads, and imported Public Bookings all get their truck, driver, and container details completed here. Allocation only pairs a driver with a truck.
+                        </div>
+                       
+                        <div id="dispatchTabSingle">
+                            <div class="panel" id="dispatchAwaitingPanel" style="margin-bottom:14px">
+                                <div class="panel-head"><span class="panel-title">Awaiting Dispatch</span><span class="panel-meta" id="awaitingDispatchMeta"></span></div>
+                                <div id="awaitingDispatchList"></div>
+                            </div>
+                            <div class="dispatch-layout">
+                                <div class="form-card">
+                                    <div class="form-card-head" style="display:flex;justify-content:space-between;align-items:center">
+                                        <span>New Dispatch Order</span>
+                                    </div>
+                                    <div class="form-card-body">
+                                        <div class="ops-notice" id="dispatchEditBanner" style="display:none;margin-bottom:12px;justify-content:space-between;align-items:center;gap:8px">
+                                            <span>Completing an awaiting-dispatch trip — pick a truck &amp; driver and confirm details below.</span>
+                                            <button class="pill" style="font-size:10px" onclick="cancelDispatchEdit()">✕ Cancel</button>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Truck</label><select id="d_truck"></select></div>
+                                            <div class="fg"><label>Driver</label><select id="d_driver"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Container No.</label><input id="d_container" list="containerHistory" placeholder="ABCD1234567 — pick existing or type new" /></div>
+                                            <div class="fg"><label>Container Type</label>
+                                                <select id="d_ctype">
+                                                    <option>20ft Dry</option><option>40ft Dry</option><option>40ft HC</option>
+                                                    <option>20ft Reefer</option><option>40ft Reefer</option>
+                                                    <option>Flat Rack</option><option>Open Top</option><option>Tank</option><option>Hazmat</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Work Type</label>
+                                                <select id="d_worktype">
+                                                    <option>Port → Depot</option><option>Depot → Port</option><option>Depot → Depot</option>
+                                                    <option>Client → Depot</option><option>Depot → Client</option>
+                                                    <option>Port → CFS</option><option>CFS → Port</option>
+                                                    <option>Client → Port</option><option>Yard Move</option>
+                                                </select>
+                                            </div>
+                                            <div class="fg"><label>Shipping Line</label><select id="d_line"></select></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Origin</label><input id="d_origin" placeholder="Kilindini Port" /></div>
+                                            <div class="fg"><label>Destination</label><input id="d_dest" placeholder="Client Depot" /></div>
+                                        </div>
+                                        <div class="form-row-2">
+                                            <div class="fg"><label>Distance (km)</label><input id="d_distance" type="number" placeholder="25" /></div>
+                                            <div class="fg"><label>Priority</label>
+                                                <select id="d_priority"><option>Normal</option><option>High</option><option>Urgent</option></select>
+                                            </div>
+                                        </div>
+                                        <div class="fg"><label>Client Reference</label><input id="d_ref" placeholder="BL / Booking ref" /></div>
+                                        <div class="fg"><label>Notes</label><textarea id="d_notes" rows="2" placeholder="Special instructions…"></textarea></div>
+                                        <!-- Container Image Upload (multiple) -->
+                                        <div class="fg">
+                                            <label>Container Photos <span class="label-optional">(optional, multiple allowed)</span></label>
+                                            <div class="file-upload-area" id="containerImgUpload" onclick="document.getElementById('d_container_img').click()">
+                                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                                <span id="containerImgLabel">Upload container photos</span>
+                                            </div>
+                                            <input type="file" id="d_container_img" accept="image/*" multiple style="display:none" onchange="previewContainerImgs(event)" />
+                                        </div>
+                                        <div id="containerImgPreview" style="display:none;margin-bottom:10px">
+                                            <div class="container-img-grid" id="containerImgGrid"></div>
+                                            <button class="pill" style="margin-top:6px;font-size:10px" onclick="clearContainerImgs()">✕ Remove all</button>
+                                        </div>
+                                        <button class="submit-btn" id="dispatchSubmitBtn" onclick="createDispatch()">Create Dispatch Order →</button>
+                                    </div>
+                                </div>
+                                <div id="dispatchQueue"></div>
+                            </div>
+                        </div>
+                   
+                        <div id="dispatchTabBulk" style="display:none">
+                            <div class="form-card" style="max-width:600px">
+                                <div class="form-card-head">Bulk Container Dispatch</div>
+                                <div class="form-card-body">
+                                    <div class="dispatch-bulk-info">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                        Upload a CSV or JSON file with container dispatch data. Each row should include: container, truck, driver, origin, destination, work type, and distance.
+                                    </div>
+                                    <div class="file-upload-area large" id="bulkDispatchDrop" onclick="document.getElementById('bulkDispatchFile').click()" ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="handleBulkDrop(event)">
+                                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                        <div class="upload-label">Drop CSV or JSON here</div>
+                                        <div class="upload-sub">or click to browse · max 5MB</div>
+                                    </div>
+                                    <input type="file" id="bulkDispatchFile" accept=".csv,.json" style="display:none" onchange="handleBulkFile(event)" />
+                                    <div id="bulkDispatchPreview" style="display:none">
+                                        <div class="panel" style="margin-top:14px">
+                                            <div class="panel-head"><span class="panel-title">Preview</span><span class="panel-meta" id="bulkRowCount"></span></div>
+                                            <div class="table-wrap"><table class="data-table" id="bulkPreviewTable"><thead></thead><tbody></tbody></table></div>
+                                        </div>
+                                        <button class="submit-btn" onclick="processBulkDispatch()">Process All Dispatches →</button>
+                                    </div>
+                                    <div class="bulk-template-row">
+                                        <button class="action-btn ghost" onclick="downloadBulkTemplate()">⬇ Download CSV Template</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    
+                    <section class="section" id="sec-maintenance">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Maintenance Log</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterMaint('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterMaint('open',this)">Open</button>
+                                <button class="filter-btn" onclick="filterMaint('in_progress',this)">In Progress</button>
+                                <button class="filter-btn" onclick="filterMaint('resolved',this)">Resolved</button>
+                                <button class="action-btn" onclick="showMaintModal()">+ Log Issue</button>
+                            </div>
+                        </div>
+                        <div id="maintList"></div>
+                    </section>
+
+                    <!-- FUEL -->
+                    <section class="section" id="sec-fuel">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Fuel Log</div>
+                        </div>
+                        <div class="dispatch-layout">
+                            <div class="form-card">
+                                <div class="form-card-head">Log Fuel Fill</div>
+                                <div class="form-card-body">
+                                    <div class="fg"><label>Truck</label><select id="f_truck"></select></div>
+                                    <div class="fg"><label>Driver</label><select id="f_driver"></select></div>
+                                    <div class="form-row-2">
+                                        <div class="fg"><label>Litres</label><input id="f_litres" type="number" placeholder="0" /></div>
+                                        <div class="fg"><label>Price/Litre (KSh)</label><input id="f_price" type="number" placeholder="0" /></div>
+                                    </div>
+                                    <div class="fg"><label>Station</label><input id="f_station" placeholder="Kobil Mombasa" /></div>
+                                    <div class="fg"><label>Odometer</label><input id="f_odo" type="number" placeholder="0" /></div>
+                                    <div class="fg"><label>Receipt No.</label><input id="f_receipt" placeholder="RCPT-001" /></div>
+                                    <button class="submit-btn" onclick="addFuelLog()">Log Fill →</button>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="panel" id="fuelSummaryPanel">
+                                    <div class="panel-head"><span class="panel-title">Fuel Summary</span></div>
+                                    <div id="fuelSummary"></div>
+                                </div>
+                                <div class="panel" style="margin-top:14px">
+                                    <div class="panel-head"><span class="panel-title">Recent Fills</span></div>
+                                    <div class="table-wrap">
+                                        <table class="data-table">
+                                            <thead><tr><th>Date</th><th>Truck</th><th>Driver</th><th>Litres</th><th>KSh/L</th><th style="text-align:right">Total</th><th>Station</th></tr></thead>
+                                            <tbody id="fuelTableBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- SHUTOUT -->
+                    <section class="section" id="sec-shutout">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Shutout Container Handling</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterShutout('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterShutout('open',this)">Open</button>
+                                <button class="filter-btn" onclick="filterShutout('redelivery',this)">Redelivery</button>
+                                <button class="filter-btn" onclick="filterShutout('resolved',this)">Resolved</button>
+                                <button class="action-btn" onclick="showAddShutoutModal()">+ Flag Shutout</button>
+                            </div>
+                        </div>
+                        <div id="shutoutList"></div>
+                    </section>
+
+                    <!-- INTERCHANGE -->
+                    <section class="section" id="sec-interchange">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Interchange Management</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterInterchange('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterInterchange('pending',this)">Pending</button>
+                                <button class="filter-btn" onclick="filterInterchange('approved',this)">Approved</button>
+                                <button class="filter-btn" onclick="filterInterchange('reconciled',this)">Reconciled</button>
+                                <button class="action-btn" onclick="showAddInterchangeModal()">+ Record Interchange</button>
+                            </div>
+                        </div>
+                        <div id="interchangeList"></div>
+                    </section>
+
+                    <!-- SHIPPING LINES -->
+                    <section class="section" id="sec-shippinglines">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Shipping Lines</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterLines('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterLines('active',this)">Active</button>
+                                <button class="action-btn" onclick="showAddLineModal()">+ Add Line</button>
+                            </div>
+                        </div>
+                        <div class="two-col-grid"><div id="linesSummary"></div><div></div></div>
+                        <div class="truck-grid" id="linesGrid" style="margin-top:14px"></div>
+                    </section>
+
+                    <!-- REQUISITIONS (OPS VIEW — no approve button) -->
+                    <section class="section" id="sec-requisitions">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Requisitions</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterRequisitions('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterRequisitions('pending',this)">Pending</button>
+                                <button class="filter-btn" onclick="filterRequisitions('approved',this)">Approved</button>
+                                <button class="filter-btn" onclick="filterRequisitions('rejected',this)">Rejected</button>
+                                <button class="filter-btn" onclick="filterRequisitions('fulfilled',this)">Fulfilled</button>
+                                <button class="action-btn" onclick="showAddRequisitionModal()">+ New Requisition</button>
+                            </div>
+                        </div>
+                        <div class="ops-notice">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            Requisition approvals are handled in the Admin → Allocation section. Submit requisitions here for admin review.
+                        </div>
+                        <div id="reqList"></div>
+                    </section>
+
+                    <!-- WORKSHOP (OPS VIEW — no approve button) -->
+                    <section class="section" id="sec-workshop">
+                        <div class="sec-toolbar">
+                            <div class="sec-title">Workshop</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="filterWorkshop('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterWorkshop('reported',this)">Reported</button>
+                                <button class="filter-btn" onclick="filterWorkshop('diagnosed',this)">Diagnosed</button>
+                                <button class="filter-btn" onclick="filterWorkshop('in_progress',this)">In Progress</button>
+                                <button class="filter-btn" onclick="filterWorkshop('completed',this)">Completed</button>
+                                <button class="action-btn" onclick="showAddWorkshopJobModal()">+ New Job Card</button>
+                            </div>
+                        </div>
+                        <div class="ops-notice">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                            Workshop job card approvals and status advances are handled in the Admin section only.
+                        </div>
+                        <div id="workshopList"></div>
+                    </section>
+
+                    <!-- ══ ADMIN SECTIONS ══ -->
+
+                    <!-- INVOICING -->
+                    <section class="section" id="sec-invoicing">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                Invoicing &amp; Billing
+                            </div>
+                            <div class="filter-row" id="invoicingToolbar">
+                                <button class="filter-btn active" onclick="filterInvoices('all',this)">All</button>
+                                <button class="filter-btn" onclick="filterInvoices('draft',this)">Draft</button>
+                                <button class="filter-btn" onclick="filterInvoices('sent',this)">Sent</button>
+                                <button class="filter-btn" onclick="filterInvoices('paid',this)">Paid</button>
+                                <button class="filter-btn" onclick="filterInvoices('partial',this)">Partial</button>
+                                <button class="filter-btn" onclick="filterInvoices('overdue',this)">Overdue</button>
+                                <button class="action-btn" onclick="showCreateInvoiceModal()">+ Create Invoice</button>
+                                <button class="action-btn ghost" onclick="autoGenerateInvoices()">Auto-Generate</button>
+                                <button class="action-btn ghost" onclick="showBillingRatesModal()">⚙ Billing Rates</button>
+                                <button class="action-btn ghost" onclick="lockFinance()">🔒 Lock Vault</button>
+                            </div>
+                        </div>
+                        <div class="inv-kpi-reveal-bar" id="invKpiRevealBar">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                            <span>Financial summary is hidden for security.</span>
+                            <button class="inv-reveal-btn" onclick="revealInvKpis()">Reveal with PIN →</button>
+                        </div>
+                        <div class="kpi-row" id="invKpis" style="display:none"></div>
+                        <div id="invoicesList"></div>
+                    </section>
+
+                    <!-- ALLOCATION -->
+                    <section class="section" id="sec-allocation">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">Allocation Engine</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="switchAllocTab('auto',this)" id="allocTabBtn-auto">Auto-Allocation</button>
+                                <button class="filter-btn" onclick="switchAllocTab('manual',this)" id="allocTabBtn-manual">Manual Allocation</button>
+                                <button class="filter-btn admin-only-btn" onclick="switchAllocTab('requisitions',this)" id="allocTabBtn-requisitions">Requisition Approvals
+                                    <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                </button>
+                                <button class="filter-btn admin-only-btn" onclick="switchAllocTab('workshop',this)" id="allocTabBtn-workshop">Workshop Approvals
+                                    <svg class="lock-icon" width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Auto Allocation -->
+                        <div id="allocTabAuto">
+                            <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+                                <button class="action-btn" onclick="runAllocation()">Run Auto-Allocation</button>
+                                <button class="action-btn ghost" onclick="showAllocationRulesModal()">Configure Rules</button>
+                            </div>
+                            <div class="kpi-row" id="allocKpis"></div>
+                            <div class="two-col-grid">
+                                <div class="panel">
+                                    <div class="panel-head"><span class="panel-title">Awaiting Dispatch</span><span class="panel-meta" id="allocQueueMeta"></span></div>
+                                    <div class="ops-notice" style="margin:0 0 10px">Trips imported from Public Bookings, bulk uploads, or manual entry that still need a truck &amp; driver — matched here for convenience, finished off in the Dispatch Console.</div>
+                                    <div id="allocQueue"></div>
+                                </div>
+                                <div class="panel">
+                                    <div class="panel-head"><span class="panel-title">Allocation Rules</span></div>
+                                    <div id="allocRules"></div>
+                                </div>
+                            </div>
+                            <div class="panel" style="margin-top:14px">
+                                <div class="panel-head"><span class="panel-title">Recommended Assignments</span></div>
+                                <div id="allocRecommendations"></div>
+                            </div>
+                        </div>
+                        
+                        <div id="allocTabManual" style="display:none">
+                            <div class="ops-notice" style="margin-bottom:14px">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+                                This screen only pairs a driver with a truck. Trip details — container, route, work type, photos — are filled in from the Dispatch Console, which also picks up trucks/drivers you assign here.
+                            </div>
+                            <div class="two-col-grid">
+                                <div class="form-card">
+                                    <div class="form-card-head">Assign Driver to Truck</div>
+                                    <div class="form-card-body">
+                                        <div class="fg"><label>Select Truck</label><select id="ma_truck"></select></div>
+                                        <div class="fg"><label>Select Driver</label><select id="ma_driver"></select></div>
+                                        <div class="fg"><label>Notes</label><input id="ma_notes" placeholder="Assignment notes…" /></div>
+                                        <button class="submit-btn" onclick="manualAssignDriverToTruck()">Assign Driver to Truck →</button>
+                                    </div>
+                                </div>
+                                <div class="panel">
+                                    <div class="panel-head"><span class="panel-title">Awaiting Dispatch</span><span class="panel-meta" id="allocManualAwaitingMeta"></span></div>
+                                    <div class="ops-notice" style="margin:0 0 10px">
+                                        Pair a truck &amp; driver above, then match them to one of these here — or open the <a href="#" onclick="showSection('dispatch',document.querySelector('[data-section=dispatch]'));return false" style="color:var(--gold)">Dispatch Console →</a> to finish the trip details.
+                                    </div>
+                                    <div id="allocManualAwaitingList"></div>
+                                </div>
+                            </div>
+                            <div class="panel" style="margin-top:14px" id="adminStatusOverridePanel">
+                                <div class="panel-head"><span class="panel-title">Manual Status Override <span style="font-size:10px;color:var(--text-3);font-weight:400;margin-left:8px">Admin only — use with caution</span></span></div>
+                                <div id="adminStatusPanel"></div>
+                            </div>
+                        </div>
+                        
+                        <div id="allocTabRequisitions" style="display:none">
+                            <div id="adminReqList"></div>
+                        </div>
+                       
+                        <div id="allocTabWorkshop" style="display:none">
+                            <div id="adminWorkshopList"></div>
+                        </div>
+                    </section>
+
+                   
+                    <section class="section" id="sec-workanalysis">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">Work Type Analysis</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="renderWorkAnalysis('all',this)">All Time</button>
+                                <button class="filter-btn" onclick="renderWorkAnalysis('today',this)">Today</button>
+                                <button class="filter-btn" onclick="renderWorkAnalysis('week',this)">This Week</button>
+                                <button class="filter-btn" onclick="renderWorkAnalysis('month',this)">This Month</button>
+                            </div>
+                        </div>
+                        <div class="kpi-row" id="waKpis"></div>
+                        <div class="two-col-grid">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Trip Volume by Work Type</span></div>
+                                <div id="waVolumeChart" class="wt-bars-grid"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Performance Matrix</span></div>
+                                <div class="table-wrap">
+                                    <table class="data-table">
+                                        <thead><tr><th>Work Type</th><th>Trips</th><th>Avg Duration</th><th>On-Time %</th><th>Top Truck</th></tr></thead>
+                                        <tbody id="waMatrix"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                  
+                    <section class="section" id="sec-reports">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">Reports &amp; Analytics</div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="renderReport('overview',this)">Overview</button>
+                                <button class="filter-btn" onclick="renderReport('fleet',this)">Fleet</button>
+                                <button class="filter-btn" onclick="renderReport('drivers',this)">Drivers</button>
+                                <button class="filter-btn" onclick="renderReport('maintenance',this)">Maintenance</button>
+                                <button class="filter-btn" onclick="renderReport('fuel',this)">Fuel</button>
+                                <button class="filter-btn" onclick="requireFinanceReport('revenue',this)">Revenue 🔒</button>
+                            </div>
+                        </div>
+                        <div id="reportContent"></div>
+                    </section>
+
+                   
+                    <section class="section" id="sec-tripreports">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                Trip Reports &amp; Audit Centre
+                            </div>
+                            <div class="filter-row">
+                                <button class="filter-btn active" onclick="trcSwitchTab('trips',this)">Trip Reports</button>
+                                <button class="filter-btn" onclick="trcSwitchTab('audit',this)">Audit Log</button>
+                            </div>
+                        </div>
+
+                        <div class="ops-notice" style="margin-bottom:14px">🔒 Restricted to System Administrators. Every query and export run here is written to the Audit Log for accountability.</div>
+
+                       
+                        <div id="trcTab-trips">
+                            <div class="panel" style="padding:16px;margin-bottom:14px">
+                                <div class="trc-period-row">
+                                    <button class="filter-btn active" onclick="trcSetPeriod('hourly',this)">Hourly</button>
+                                    <button class="filter-btn" onclick="trcSetPeriod('daily',this)">Daily</button>
+                                    <button class="filter-btn" onclick="trcSetPeriod('weekly',this)">Weekly</button>
+                                    <button class="filter-btn" onclick="trcSetPeriod('monthly',this)">Monthly</button>
+                                    <button class="filter-btn" onclick="trcSetPeriod('custom',this)">Custom Range</button>
+                                </div>
+                                <div class="trc-filter-grid">
+                                    <div class="fg" style="margin:0"><label>From</label><input type="datetime-local" id="trcFrom" /></div>
+                                    <div class="fg" style="margin:0"><label>To</label><input type="datetime-local" id="trcTo" /></div>
+                                    <div class="fg" style="margin:0"><label>Truck</label><select id="trcTruck"><option value="">All Trucks</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Driver</label><select id="trcDriver"><option value="">All Drivers</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Status</label><select id="trcStatus"><option value="">All Statuses</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Work Type</label><select id="trcWorkType"><option value="">All Types</option></select></div>
+                                </div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                                    <button class="action-btn" onclick="trcRunTripReport()">▶ Run Report</button>
+                                    <button class="action-btn ghost" onclick="trcExportTripsCSV()" id="trcExportTripsBtn" disabled>⬇ Export CSV</button>
+                                    <button class="action-btn ghost" onclick="trcExportTripsJSON()" id="trcExportTripsJsonBtn" disabled>⬇ Export JSON</button>
+                                </div>
+                            </div>
+                            <div id="trcTripSummary"></div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Trip Records</span><span class="panel-meta" id="trcTripMeta">Run a report to populate</span></div>
+                                <div class="table-wrap">
+                                    <table class="data-table">
+                                        <thead><tr>
+                                            <th>Container</th><th>Truck</th><th>Driver</th><th>Work Type</th><th>Route</th><th>Status</th><th>Priority</th><th>Distance</th><th>Started</th><th>ETA</th>
+                                        </tr></thead>
+                                        <tbody id="trcTripBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                       
+                        <div id="trcTab-audit" style="display:none">
+                            <div class="panel" style="padding:16px;margin-bottom:14px">
+                                <div class="trc-period-row">
+                                    <button class="filter-btn active" onclick="trcSetAuditPeriod('today',this)">Today</button>
+                                    <button class="filter-btn" onclick="trcSetAuditPeriod('week',this)">This Week</button>
+                                    <button class="filter-btn" onclick="trcSetAuditPeriod('month',this)">This Month</button>
+                                    <button class="filter-btn" onclick="trcSetAuditPeriod('all',this)">All Time</button>
+                                    <button class="filter-btn" onclick="trcSetAuditPeriod('custom',this)">Custom Range</button>
+                                </div>
+                                <div class="trc-filter-grid">
+                                    <div class="fg" style="margin:0"><label>From</label><input type="datetime-local" id="trcAuditFrom" /></div>
+                                    <div class="fg" style="margin:0"><label>To</label><input type="datetime-local" id="trcAuditTo" /></div>
+                                    <div class="fg" style="margin:0"><label>User</label><select id="trcAuditUser"><option value="">All Users</option></select></div>
+                                    <div class="fg" style="margin:0"><label>Search Action / Detail</label><input type="text" id="trcAuditSearch" placeholder="e.g. Dispatch, Deleted, Invoice…" /></div>
+                                </div>
+                                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                                    <button class="action-btn" onclick="trcRunAuditQuery()">▶ Run Query</button>
+                                    <button class="action-btn ghost" onclick="trcExportAuditCSV()" id="trcExportAuditBtn" disabled>⬇ Export CSV</button>
+                                </div>
+                            </div>
+                            <div id="trcAuditSummary"></div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Audit Trail</span><span class="panel-meta" id="trcAuditMeta">Run a query to populate</span></div>
+                                <div class="table-wrap">
+                                    <table class="data-table">
+                                        <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+                                        <tbody id="trcAuditBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                   
+                    <section class="section" id="sec-livetracking">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">Live Tracking</div>
+                            <div class="filter-row">
+                                <button class="action-btn ghost" onclick="refreshTracking()">↻ Refresh</button>
+                                <button class="action-btn ghost" onclick="fitTrackingBounds()">⤢ Show All</button>
+                            </div>
+                        </div>
+                        <div class="panel">
+                            <div class="panel-head">
+                                <span class="panel-title">Fleet Map</span>
+                                <span class="panel-meta" id="trackingMeta">0 vehicles tracked</span>
+                            </div>
+                            <div class="tracking-map">
+                                <div id="trackingMapCanvas" class="tracking-map-canvas">
+                                    <div class="tracking-map-placeholder">
+                                        <div style="font-family:var(--font-brand);font-size:22px;color:var(--gold);margin-bottom:8px">GARGO</div>
+                                        <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);letter-spacing:2px;margin-bottom:20px">LOADING MAP…</div>
+                                        <div style="font-size:12px;color:var(--text-2);max-width:400px;line-height:1.6">Positions come from drivers' own phones in real time — no simulation.</div>
+                                    </div>
+                                </div>
+                                <div class="tracking-vehicles" id="trackingVehicles"></div>
+                            </div>
+                        </div>
+                        <div class="two-col-grid" style="margin-top:14px">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Active Movements</span></div>
+                                <div id="trackingMovements"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Geofence Events</span></div>
+                                <div id="trackingGeofence"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                   
+                    <section class="section" id="sec-usermgmt">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                User Management
+                            </div>
+                            <div class="filter-row">
+                                <button class="action-btn" onclick="showCreateUserModal()">+ Create User</button>
+                            </div>
+                        </div>
+                        <div class="kpi-row" id="userKpis"></div>
+                        <div class="two-col-grid">
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">System Users</span></div>
+                                <div id="userList"></div>
+                            </div>
+                            <div class="panel">
+                                <div class="panel-head"><span class="panel-title">Access Roles</span></div>
+                                <div id="roleList"></div>
+                            </div>
+                        </div>
+                        <div class="panel" style="margin-top:14px">
+                            <div class="panel-head">
+                                <span class="panel-title">Audit Log</span>
+                                <button class="action-btn ghost" style="padding:4px 10px;font-size:10.5px" onclick="showAdminSection('tripreports', document.getElementById('adminBtn-tripreports')); trcSwitchTab('audit', document.querySelector('#trcTab-audit') ? document.querySelectorAll('#sec-tripreports .filter-row .filter-btn')[1] : null)">Full Audit Centre →</button>
+                            </div>
+                            <div id="auditLog"></div>
+                        </div>
+                    </section>
+
+                    
+                    <section class="section" id="sec-settings">
+                        <div class="sec-toolbar">
+                            <div class="sec-title-admin">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                System Settings
+                            </div>
+                        </div>
+                        <div class="settings-grid">
+                            <div class="report-block">
+                                <h3>System Information</h3>
+                                <div class="detail-row"><span>System</span><b>Gargo Fleet Operations</b></div>
+                                <div class="detail-row"><span>Version</span><b>4.0.0 · Production</b></div>
+                                <div class="detail-row"><span>Domain</span><b>gargo.co.ke</b></div>
+                                <div class="detail-row"><span>Storage</span><b>Supabase (Cloud)</b></div>
+                                <div class="detail-row"><span>Last Backup</span><b id="lastBackup">Never</b></div>
+                                <div class="detail-row"><span>Records</span><b id="totalRecords">0</b></div>
+                            </div>
+                            <div class="report-block">
+                                <h3>Data Management</h3>
+                                <div style="display:flex;flex-direction:column;gap:8px">
+                                    <button class="action-btn ghost" onclick="exportAllData()">⬇ Export All Data (JSON)</button>
+                                    <button class="action-btn ghost" onclick="document.getElementById('importFile').click()">⬆ Import Data</button>
+                                    <input type="file" id="importFile" style="display:none" accept=".json" onchange="importData(event)" />
+                                    <button class="action-btn" onclick="createBackup()">Create Backup</button>
+                                </div>
+                                <div style="margin-top:20px">
+                                    <button class="danger-zone-toggle" onclick="toggleDangerZone()" id="dangerZoneToggle">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                        Show Danger Zone
+                                    </button>
+                                    <div id="dangerZone" style="display:none;margin-top:12px">
+                                        <div class="danger-zone-banner">⚠ These actions are irreversible. Admin PIN required.</div>
+                                        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+                                            <button class="action-btn danger" onclick="clearAllData()">🗑 Clear All System Data</button>
+                                            <button class="action-btn danger" onclick="resetToSeed()">Reset to Seed Data</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="report-block">
+                                <h3>Integration Status</h3>
+                                <div class="detail-row"><span>Supabase DB</span><b style="color:var(--green)">Connected</b></div>
+                                <div class="detail-row"><span>Map Provider</span><b style="color:var(--green)">OpenStreetMap (Leaflet) · Active</b></div>
+                                <div class="detail-row"><span>GPS Telemetry</span><b id="gpsStatusVal" style="color:var(--green)">Live · Driver GPS</b></div>
+                                <div class="detail-row"><span>Client Portal</span><b style="color:var(--green)">Active</b></div>
+                                <div class="detail-row"><span>WhatsApp Alerts</span><b style="color:var(--green)">Active</b></div>
+                                <div class="detail-row"><span>MPesa Payments</span><b style="color:var(--text-3)">Not configured</b></div>
+                                <div style="font-size:9.5px;color:var(--text-3);margin-top:14px;line-height:1.5">The live fleet map uses free OpenStreetMap tiles via Leaflet.js — no API key or billing account required. Address lookups use the free Nominatim reverse-geocoding service.</div>
+                            </div>
+                            <div class="report-block">
+                                <h3>Company Details</h3>
+                                <div class="detail-row"><span>Company</span><b>Gargo Logistics Ltd</b></div>
+                                <div class="detail-row"><span>Location</span><b>Mombasa, Kenya</b></div>
+                                <div class="detail-row"><span>Tel</span><b>+254 116 307 751</b></div>
+                                <div class="detail-row"><span>Bank</span><b>Equity Bank · 1234567890</b></div>
+                                <div class="detail-row"><span>Swift</span><b>EQBLKENX</b></div>
+                                <div class="detail-row"><span>KRA PIN</span><b>P051234567X</b></div>
+                            </div>
+                        </div>
+                    </section>
+
+                  
+<section class="section" id="sec-publicbookings">
+  <div class="sec-toolbar">
+    <div class="sec-title">Public Bookings</div>
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="filterPublicBookings('pending',this)">Pending</button>
+      <button class="filter-btn" onclick="filterPublicBookings('imported',this)">Imported</button>
+      <button class="filter-btn" onclick="filterPublicBookings('all',this)">All</button>
+      <button class="action-btn" onclick="refreshPublicBookings()">↻ Refresh</button>
     </div>
   </div>
+  <div id="publicBookingsList"></div>
 </section>
 
-<!-- MARQUEE -->
-<div class="marquee-strip" aria-hidden="true">
-  <div class="marquee-track">
-    <span>Empty Container Movement</span>
-    <span>Depot to Port</span>
-    <span>Port to CFS</span>
-    <span>Client Deliveries</span>
-    <span>Export Movements</span>
-    <span>Port to Depot</span>
-    <span>Mombasa · Kenya</span>
-    <span>Reliable · Precise · Trusted</span>
-    <span>Empty Container Movement</span>
-    <span>Depot to Port</span>
-    <span>Port to CFS</span>
-    <span>Client Deliveries</span>
-    <span>Export Movements</span>
-    <span>Port to Depot</span>
-    <span>Mombasa · Kenya</span>
-    <span>Reliable · Precise · Trusted</span>
+<!-- DOCUMENT VERIFICATION -->
+<section class="section" id="sec-docverification">
+  <div class="sec-toolbar">
+    <div class="sec-title">Document Verification</div>
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="filterDocVerification('pending_review',this)">Pending Review</button>
+      <button class="filter-btn" onclick="filterDocVerification('verified',this)">Verified</button>
+      <button class="filter-btn" onclick="filterDocVerification('rejected',this)">Rejected</button>
+      <button class="filter-btn" onclick="filterDocVerification('all',this)">All</button>
+      <button class="action-btn" onclick="renderDocVerification()">↻ Refresh</button>
+    </div>
   </div>
-</div>
+  <div class="ops-notice" style="margin-bottom:14px">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+    Guarantee forms, release orders, and delivery orders uploaded by clearers/forwarders/transporters against a booking reference. Verify before storage space is allocated.
+  </div>
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-head"><span class="panel-title">Depot Storage Availability</span></div>
+    <div id="storageAvailabilityList" style="padding:12px"></div>
+  </div>
+  <div id="docVerificationList"></div>
+</section>
 
-<!-- ══════════ PAGE LAYOUT ══════════ -->
-<div class="page-layout">
-<main id="main-content">
-
-  <!-- ── ABOUT ── -->
-  <section id="about" class="about-block reveal">
-    <div class="section-eyebrow">About the Company</div>
-    <h2 class="section-heading">Jastar Logistics <span class="accent">Limited</span></h2>
-    <p class="section-body">Jastar Logistics Limited is a Mombasa-based empty container logistics company operating for nearly a decade. Headquartered at Pwani Plaza, Kilindini — in the heart of Kenya's premier port city — we are a specialist in the movement of empty containers across depots, port, CFS facilities, and client premises.</p>
-
-    <div class="about-intro">
-      <div class="about-visual" aria-hidden="true">
-        <div class="port-icon">🏗️</div>
-        <div class="about-badge">Port of Mombasa Operations</div>
-        <div class="exp-badge">
-          <div class="num">10</div>
-          <div class="txt">Years of<br>Excellence</div>
+                </div>
+            </main>
         </div>
-      </div>
-
-      <div class="about-text-col">
-        <p class="section-body">Founded with the vision of making empty container repositioning seamless, reliable, and cost-effective for shipping lines, importers, and exporters across Kenya.</p>
-        <p class="section-body">With a well-maintained fleet, a team of licensed and port-cleared drivers, and deep operational knowledge of the Mombasa logistics ecosystem, we deliver every container safely, on time — every time.</p>
-        <ul class="check-list">
-          <li>20ft, 40ft, HC, Reefers, Flat Rack &amp; Open Top containers handled</li>
-          <li>Licensed, port-pass holding drivers with deep route knowledge</li>
-          <li>Real-time fleet allocation and dispatch management</li>
-          <li>Competitive, transparent billing — no hidden charges</li>
-        </ul>
-      </div>
     </div>
 
-    <div class="vm-grid reveal">
-      <div class="vm-card">
-        <div class="vm-num" aria-hidden="true">01</div>
-        <div class="vm-icon-wrap" aria-hidden="true">🎯</div>
-        <h3 class="vm-card-title">Our Vision</h3>
-        <p class="vm-card-text">To be the most trusted and responsive empty container logistics provider in East Africa — setting the standard for safety, efficiency, and client-first service.</p>
-      </div>
-      <div class="vm-card alt">
-        <div class="vm-num" aria-hidden="true">02</div>
-        <div class="vm-icon-wrap" aria-hidden="true">⚡</div>
-        <h3 class="vm-card-title">Our Mission</h3>
-        <p class="vm-card-text">To provide shipping lines, importers, and exporters with superior container handling services — efficient, affordable, and anchored in professionalism and accountability.</p>
-      </div>
-    </div>
-
-    <div class="section-eyebrow" style="margin-top:3rem">Core Values</div>
-    <div class="pillars-grid reveal">
-      <div class="pillar">
-        <div class="pillar-icon" aria-hidden="true">⚓</div>
-        <h3 class="pillar-name">Port Expertise</h3>
-        <p class="pillar-text">Deep knowledge of KPA operations, port gate schedules, and vessel windows.</p>
-      </div>
-      <div class="pillar">
-        <div class="pillar-icon" aria-hidden="true">🛡️</div>
-        <h3 class="pillar-name">Safety First</h3>
-        <p class="pillar-text">Every driver, every truck, every movement — zero-compromise on safety standards.</p>
-      </div>
-      <div class="pillar">
-        <div class="pillar-icon" aria-hidden="true">⚡</div>
-        <h3 class="pillar-name">Fast Turnaround</h3>
-        <p class="pillar-text">Efficient dispatch, real-time tracking, and proactive issue resolution.</p>
-      </div>
-      <div class="pillar">
-        <div class="pillar-icon" aria-hidden="true">🤝</div>
-        <h3 class="pillar-name">Client Focus</h3>
-        <p class="pillar-text">Responsive communication, competitive rates, and a genuine partnership approach.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── SERVICES ── -->
-  <section id="services" class="services-section reveal">
-    <div class="section-eyebrow">What We Do</div>
-    <h2 class="section-heading">Our Core <span class="accent">Services</span></h2>
-    <p class="section-body">We specialise exclusively in empty container logistics — the critical backbone of Kenya's import-export supply chain. Every route, every depot, every container type.</p>
-    <div class="services-grid">
-      <article class="svc-card">
-        <div class="svc-icon-wrap" aria-hidden="true">🏭</div>
-        <h3 class="svc-name">Depot to Depot</h3>
-        <p class="svc-desc">Seamless transfer of empty containers between depots — Hakika, Dodwel, Fortune, and all Mombasa stacking yards. Optimising repositioning and minimising idle time.</p>
-        <span class="svc-tag">High Volume</span>
-      </article>
-      <article class="svc-card">
-        <div class="svc-icon-wrap" aria-hidden="true">⚓</div>
-        <h3 class="svc-name">Depot to Port</h3>
-        <p class="svc-desc">Timely delivery of empty containers from storage depots to the Kenya Ports Authority — coordinated with port schedules and vessel cut-off windows.</p>
-        <span class="svc-tag">Port Operations</span>
-      </article>
-      <article class="svc-card">
-        <div class="svc-icon-wrap" aria-hidden="true">🔄</div>
-        <h3 class="svc-name">Port to Depot</h3>
-        <p class="svc-desc">Collection and repatriation of empty containers from the Port of Mombasa back to designated depots — keeping container inventory balanced across the chain.</p>
-        <span class="svc-tag">Collection</span>
-      </article>
-      <article class="svc-card">
-        <div class="svc-icon-wrap" aria-hidden="true">🏗️</div>
-        <h3 class="svc-name">Port to CFS</h3>
-        <p class="svc-desc">Movement of empty containers from KPA to Container Freight Stations. Fast, compliant, and coordinated with CFS receiving teams for seamless handover.</p>
-        <span class="svc-tag">CFS Movements</span>
-      </article>
-      <article class="svc-card">
-        <div class="svc-icon-wrap" aria-hidden="true">🏢</div>
-        <h3 class="svc-name">Client to Depot</h3>
-        <p class="svc-desc">Direct pickup of empty containers from client premises, stuffing yards, and warehouses — delivered safely to designated stacking depots.</p>
-        <span class="svc-tag">Client Service</span>
-      </article>
-      <article class="svc-card">
-        <div class="svc-icon-wrap" aria-hidden="true">🚢</div>
-        <h3 class="svc-name">Export Movements</h3>
-        <p class="svc-desc">Full positioning support for export-bound containers — from stuffing location to port gate, ensuring on-time delivery ahead of vessel cut-off deadlines.</p>
-        <span class="svc-tag">Exports</span>
-      </article>
-    </div>
-  </section>
-
-  <!-- ── WHY US ── -->
-  <section class="why-section reveal" aria-labelledby="why-heading">
-    <div class="section-eyebrow">Why Choose Us</div>
-    <h2 class="section-heading" id="why-heading">Your Logistics <span class="accent">Advantage</span></h2>
-    <p class="section-body">In a competitive market, Jastar Logistics stands apart through consistency, coast-region expertise, and a genuine commitment to every client's success.</p>
-    <div class="why-list">
-      <div class="why-item">
-        <div class="why-n" aria-hidden="true">01</div>
-        <div>
-          <div class="why-title">Nearly a Decade of Mombasa Experience</div>
-          <div class="why-text">Since our founding, we've built an unmatched operational understanding of the Port of Mombasa, its depot network, CFS facilities, and client routing requirements.</div>
-        </div>
-      </div>
-      <div class="why-item">
-        <div class="why-n" aria-hidden="true">02</div>
-        <div>
-          <div class="why-title">Dedicated, Port-Cleared Drivers</div>
-          <div class="why-text">All our drivers are licensed, hold port passes, and carry deep route knowledge — instilling a culture of punctuality, safety, and professionalism on every trip.</div>
-        </div>
-      </div>
-      <div class="why-item">
-        <div class="why-n" aria-hidden="true">03</div>
-        <div>
-          <div class="why-title">Modern Fleet &amp; Real-Time Management</div>
-          <div class="why-text">Regularly serviced trucks with proactive maintenance schedules and digital dispatch allocation — zero unexpected breakdowns, maximum operational uptime.</div>
-        </div>
-      </div>
-      <div class="why-item">
-        <div class="why-n" aria-hidden="true">04</div>
-        <div>
-          <div class="why-title">Transparent, Competitive Billing</div>
-          <div class="why-text">Clear invoicing with no hidden fees. Our rates are calibrated by volume, container type, and route — always fair, always agreed upfront.</div>
-        </div>
-      </div>
-      <div class="why-item">
-        <div class="why-n" aria-hidden="true">05</div>
-        <div>
-          <div class="why-title">Responsive &amp; Reliable Communication</div>
-          <div class="why-text">Our team is reachable and responsive — you'll always know where your container is, what's happening next, and who to call if you need anything.</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── COVERAGE ── -->
-  <section id="coverage" class="coverage-section reveal" aria-labelledby="coverage-heading">
-    <div class="section-eyebrow">Operational Reach</div>
-    <h2 class="section-heading" id="coverage-heading">Where We <span class="accent">Operate</span></h2>
-    <p class="section-body">From the Port of Mombasa to inland depots, CFS facilities, and client yards — we cover every critical node in Kenya's container logistics chain.</p>
-    <div class="cov-grid">
-      <div class="cov-card">
-        <div class="cov-icon-wrap" aria-hidden="true">⚓</div>
-        <h3 class="cov-name">Port of Mombasa (KPA)</h3>
-        <p class="cov-desc">Kenya's largest seaport — our primary operational hub. All gate movements handled with precision and port compliance.</p>
-      </div>
-      <div class="cov-card">
-        <div class="cov-icon-wrap" aria-hidden="true">🏢</div>
-        <h3 class="cov-name">CFS Facilities</h3>
-        <p class="cov-desc">Container Freight Stations including leading facilities throughout the Mombasa port zone and surrounding areas.</p>
-      </div>
-      <div class="cov-card">
-        <div class="cov-icon-wrap" aria-hidden="true">🏭</div>
-        <h3 class="cov-name">Depots</h3>
-        <p class="cov-desc">Hakika, Dodwel, Fortune and all major stacking depots across the Mombasa coast region and outskirts.</p>
-      </div>
-      <div class="cov-card">
-        <div class="cov-icon-wrap" aria-hidden="true">🏠</div>
-        <h3 class="cov-name">Client Premises</h3>
-        <p class="cov-desc">Factory gates, warehouses, stuffing yards and shipper premises — we go wherever our clients need us, on schedule.</p>
-      </div>
-    </div>
-    <div class="map-wrap">
-      <div class="map-pin">
-        <div class="pname">📍 Jastar Logistics HQ</div>
-        <div class="paddr">Pwani Plaza, Kilindini · Mombasa</div>
-      </div>
-      <iframe
-        src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d7959.5!2d39.656!3d-4.065!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x184012b681f61abd%3A0x1f00af4f8a9f5b5f!2sMombasa%2C%20Kenya!5e0!3m2!1sen!2ske!4v1"
-        allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade"
-        title="Jastar Logistics Limited — Pwani Plaza, Kilindini, Mombasa">
-      </iframe>
-    </div>
-  </section>
-
-  <!-- ── DIRECTOR ── -->
-  <section id="director" class="director-section reveal" aria-labelledby="director-heading">
-    <div class="section-eyebrow">Leadership</div>
-    <div class="director-inner">
-      <div class="director-portrait" aria-hidden="true">
-        <div class="dir-avatar">👩🏾‍💼</div>
-        <div class="dir-name">Jane Mwihaki</div>
-        <div class="dir-role-chip">Director</div>
-      </div>
-      <div>
-        <div class="dir-eyebrow">Managing Director &amp; Founder</div>
-        <h2 class="dir-fullname" id="director-heading">Jane Mwihaki</h2>
-        <div class="dir-pos">Founder &amp; Managing Director — Jastar Logistics Limited</div>
-        <blockquote class="dir-quote">"Our commitment is simple — move every container with the care and urgency we would want for our own business. That's what has kept our clients returning for nearly a decade."</blockquote>
-        <p class="dir-bio">Under Jane Mwihaki's leadership, Jastar Logistics Limited has grown from a lean coastal operator into one of Mombasa's trusted names in empty container logistics. With intimate knowledge of the Port of Mombasa and a hands-on approach to management, Jane has built a company culture rooted in reliability, accountability, and genuine client service.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── CONTACT ── -->
-  <section id="contact" class="contact-section reveal" aria-labelledby="contact-heading">
-    <div class="contact-inner">
-      <div class="section-eyebrow">Get In Touch</div>
-      <h2 class="section-heading" id="contact-heading">Let's Move <span class="accent">Together</span></h2>
-      <p class="section-body" style="max-width:520px">Ready to discuss your container logistics needs? Reach our Mombasa team — we respond promptly and quote competitively.</p>
-
-      <div class="contact-grid">
-        <div>
-          <div class="ci">
-            <div class="ci-icon" aria-hidden="true">📍</div>
-            <div><div class="ci-label">Office Address</div><div class="ci-val">Pwani Plaza, Mombasa Kenya<br>P.O. Box 94041 – 80107, Kilindini, Mombasa</div></div>
-          </div>
-          <div class="ci">
-            <div class="ci-icon" aria-hidden="true">📞</div>
-            <div><div class="ci-label">Phone</div><div class="ci-val"><a href="tel:+254723672031">+254 723 672 031</a></div></div>
-          </div>
-          <div class="ci">
-            <div class="ci-icon" aria-hidden="true">✉️</div>
-            <div>
-              <div class="ci-label">Email</div>
-              <div class="ci-val">
-                <a href="mailto:jastarlogisticslimited@gmail.com">jastarlogisticslimited@gmail.com</a><br>
-                <a href="mailto:jastarlo@jastarlogisticslimited.co.ke">jastarlo@jastarlogisticslimited.co.ke</a>
-              </div>
+    
+    <div class="modal-backdrop" id="modalOverlay" onclick="closeModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-hdr">
+                <div class="modal-title" id="modalTitle">Modal</div>
+                <button class="modal-close" onclick="closeModal()">✕</button>
             </div>
-          </div>
-          <div class="ci">
-            <div class="ci-icon" aria-hidden="true">🕐</div>
-            <div><div class="ci-label">Operating Hours</div><div class="ci-val">Monday – Saturday: 7:00 AM – 6:00 PM<br>Sunday: Emergency Operations Only</div></div>
-          </div>
+            <div class="modal-body" id="modalBody"></div>
         </div>
+    </div>
 
-        <div>
-          <div class="form-title">Send Us a Message</div>
-          <div class="form-row">
-            <div class="fg">
-              <label class="flabel" for="fName">Full Name</label>
-              <input type="text" class="finput" id="fName" placeholder="Your name" autocomplete="name">
+   
+    <div class="modal-backdrop" id="financeLockOverlay">
+        <div class="modal-box vault-modal" onclick="event.stopPropagation()">
+            <div class="modal-hdr">
+                <div class="modal-title" style="display:flex;align-items:center;gap:9px">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                    Finance Vault
+                </div>
             </div>
-            <div class="fg">
-              <label class="flabel" for="fCompany">Company</label>
-              <input type="text" class="finput" id="fCompany" placeholder="Your company" autocomplete="organization">
+            <div class="modal-body">
+                <div class="vault-banner">
+                    <div class="vault-banner-label">RESTRICTED · FINANCIAL DATA</div>
+                    <div class="vault-banner-desc">This area contains sensitive financial data — invoicing, billing rates, revenue reports, and cost analytics. Finance PIN required.</div>
+                </div>
+                <div class="fg">
+                    <label>Finance PIN</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="financePin" placeholder="••••" maxlength="8" autocomplete="off" onkeydown="if(event.key==='Enter')submitFinancePin()" />
+                        <button class="pw-eye" type="button" onclick="togglePwVis('financePin',this)" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="login-error" id="financePinError" style="min-height:1.2em"></div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button class="modal-btn primary" style="flex:1" onclick="submitFinancePin()">Unlock Vault</button>
+                    <button class="modal-btn ghost" onclick="closeFinanceLock()">Cancel</button>
+                </div>
+                <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-3);margin-top:12px;text-align:center;letter-spacing:0.5px">Session-locked · Resets on logout</div>
             </div>
-          </div>
-          <div class="fg">
-            <label class="flabel" for="fEmail">Email Address</label>
-            <input type="email" class="finput" id="fEmail" placeholder="your@email.com" autocomplete="email">
-          </div>
-          <div class="form-row">
-            <div class="fg">
-              <label class="flabel" for="fService">Service Required</label>
-              <select class="fselect" id="fService">
-                <option value="">Select service...</option>
-                <option>Depot to Depot</option>
-                <option>Depot to Port</option>
-                <option>Port to Depot</option>
-                <option>Port to CFS</option>
-                <option>Client to Depot</option>
-                <option>Export Movements</option>
-                <option>General Inquiry</option>
-              </select>
-            </div>
-            <div class="fg">
-              <label class="flabel" for="fContainer">Container Type</label>
-              <select class="fselect" id="fContainer">
-                <option value="">Select type...</option>
-                <option>20ft Dry</option>
-                <option>40ft Dry</option>
-                <option>40ft HC</option>
-                <option>45ft HC</option>
-                <option>20ft Reefer</option>
-                <option>40ft Reefer</option>
-                <option>Flat Rack / Open Top</option>
-                <option>Mixed Types</option>
-              </select>
-            </div>
-          </div>
-          <div class="fg">
-            <label class="flabel" for="fMessage">Message</label>
-            <textarea class="ftextarea" id="fMessage" placeholder="Describe your requirements — volumes, routes, frequency..."></textarea>
-          </div>
-          <div class="form-success" id="formSuccess" role="alert" aria-live="polite">✦ Message sent — we'll respond within 24 hours.</div>
-          <button class="btn-submit" id="submitBtn" onclick="submitForm()" aria-label="Submit enquiry form">Send Message →</button>
-          <p class="form-note">We typically respond within a few business hours.</p>
         </div>
-      </div>
     </div>
-  </section>
 
-</main>
-
-<!-- ══════════ SIDEBAR ══════════ -->
-<aside class="sidebar" aria-label="Sidebar navigation and quick contact">
-
-  <div class="scard">
-    <div class="scard-head">Quick Navigation</div>
-    <div class="scard-body">
-      <ul class="snav" role="list">
-        <li class="active"><a href="#about">About the Company</a></li>
-        <li><a href="#services">Our Core Services</a></li>
-        <li><a href="#coverage">Operations Area</a></li>
-        <li><a href="#director">Leadership</a></li>
-        <li><a href="#contact">Contact Us</a></li>
-      </ul>
+    
+    <div class="modal-backdrop" id="settingsVaultOverlay">
+        <div class="modal-box vault-modal" onclick="event.stopPropagation()">
+            <div class="modal-hdr">
+                <div class="modal-title" style="display:flex;align-items:center;gap:9px">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83"/></svg>
+                    Settings 
+                </div>
+            </div>
+            <div class="modal-body">
+                <div class="vault-banner">
+                    <div class="vault-banner-label">SETTINGS</div>
+                    <div class="vault-banner-desc">System settings contain sensitive configuration. Admin password required to proceed.</div>
+                </div>
+                <div class="fg">
+                    <label>pin</label>
+                    <div class="pw-wrap">
+                        <input type="password" id="settingsVaultPin" placeholder="Enter vault password" autocomplete="off" onkeydown="if(event.key==='Enter')submitSettingsVault()" />
+                        <button class="pw-eye" type="button" onclick="togglePwVis('settingsVaultPin',this)" tabindex="-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="login-error" id="settingsVaultError" style="min-height:1.2em"></div>
+                <div style="display:flex;gap:8px;margin-top:8px">
+                    <button class="modal-btn primary" style="flex:1" onclick="submitSettingsVault()">Unlock Settings</button>
+                    <button class="modal-btn ghost" onclick="closeSettingsVault()">Cancel</button>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <div class="scard">
-    <div class="scard-head">Customer Care</div>
-    <div class="scard-body">
-      <div class="qci"><div class="qci-icon" aria-hidden="true">📍</div><div><div class="qci-label">Location</div><div class="qci-val">Pwani Plaza, Kilindini<br>Mombasa, Kenya</div></div></div>
-      <div class="qci"><div class="qci-icon" aria-hidden="true">📞</div><div><div class="qci-label">Telephone</div><div class="qci-val"><a href="tel:+254723672031">+254 723 672 031</a></div></div></div>
-      <div class="qci"><div class="qci-icon" aria-hidden="true">✉️</div><div><div class="qci-label">Email</div><div class="qci-val"><a href="mailto:jastarlogisticslimited@gmail.com">jastarlogisticslimited@gmail.com</a></div></div></div>
-      <div class="qci"><div class="qci-icon" aria-hidden="true">📬</div><div><div class="qci-label">P.O. Box</div><div class="qci-val">P.O. Box 94041 – 80107<br>Kilindini, Mombasa</div></div></div>
-      <div class="qci"><div class="qci-icon" aria-hidden="true">🕐</div><div><div class="qci-label">Hours</div><div class="qci-val">Mon – Sat: 7:00 AM – 6:00 PM</div></div></div>
-    </div>
-  </div>
+    
 
-  <div class="scard">
-    <div class="scard-head">Our Services</div>
-    <div class="scard-body">
-      <ul class="snav" role="list">
-        <li><a href="#services">Depot to Depot</a></li>
-        <li><a href="#services">Depot to Port</a></li>
-        <li><a href="#services">Port to Depot</a></li>
-        <li><a href="#services">Port to CFS</a></li>
-        <li><a href="#services">Client to Depot</a></li>
-        <li><a href="#services">Export Movements</a></li>
-      </ul>
+   
+    <div class="shell" id="driverPortal" style="display:none;flex-direction:column">
+        <div class="section-topbar">
+            <div class="section-topbar-left">
+                <div class="rail-brand" style="padding:0">
+                    <span class="rail-brand-name">GARGO</span>
+                    <span class="rail-brand-sep">·</span>
+                    <span class="rail-brand-sub">Driver</span>
+                </div>
+            </div>
+            <div class="section-topbar-right">
+                <div class="topbar-date" id="dp_clock">--:--</div>
+                <div class="role-chip" id="dp_driverRole">Driver</div>
+                <div class="user-av-rail" id="dp_driverAv">DR</div>
+                <div class="user-name-rail" id="dp_driverName">Driver</div>
+                <button class="action-btn ghost" onclick="logout()">Sign Out</button>
+            </div>
+        </div>
+        <div style="padding:18px 18px 0;max-width:640px;margin:0 auto;width:100%" id="dp_dutyBar"></div>
+        <div style="padding:18px;max-width:640px;margin:0 auto;width:100%" id="dp_body">
+            <div class="empty-state"><div class="empty-state-label">Loading…</div></div>
+        </div>
     </div>
-  </div>
 
-  <div class="scta">
-    <div class="scta-title">Request a Quote</div>
-    <div class="scta-text">Ready to move your containers? Contact our team for a competitive, no-obligation quote today.</div>
-    <a href="#contact" class="scta-btn">Request a Quote →</a>
-  </div>
+   
+    <datalist id="containerHistory"></datalist>
 
-</aside>
-</div>
+   
+    <div id="toastStack"></div>
 
-<!-- ══════════ FOOTER ══════════ -->
-<footer>
-  <div class="footer-main">
-    <div class="footer-brand">
-      <a href="#" class="footer-logo" aria-label="Jastar Logistics Limited — Back to top">
-        <img src="https://res.cloudinary.com/dajkaiwyx/image/upload/v1777991880/Jastar_Logo_qivitd.jpg" alt="Jastar Logistics Limited" width="42" height="42">
-        <span class="footer-logo-text">Jastar Logistics Limited</span>
-      </a>
-      <p class="footer-desc">Mombasa's trusted empty container logistics specialists. Connecting port, depot, CFS and client with precision and reliability since 2015.</p>
-      <div class="footer-btns">
-        <a href="tel:+254723672031" class="footer-btn">📞 Call Us</a>
-        <a href="mailto:jastarlogisticslimited@gmail.com" class="footer-btn">✉️ Email Us</a>
-      </div>
-    </div>
-    <div class="footer-col">
-      <h4>Services</h4>
-      <ul>
-        <li><a href="#services">Depot to Depot</a></li>
-        <li><a href="#services">Depot to Port</a></li>
-        <li><a href="#services">Port to CFS</a></li>
-        <li><a href="#services">Port to Depot</a></li>
-        <li><a href="#services">Client to Depot</a></li>
-        <li><a href="#services">Export Movements</a></li>
-      </ul>
-    </div>
-    <div class="footer-col">
-      <h4>Company</h4>
-      <ul>
-        <li><a href="#about">About Us</a></li>
-        <li><a href="#director">Leadership</a></li>
-        <li><a href="#coverage">Our Coverage</a></li>
-        <li><a href="#contact">Contact Us</a></li>
-      </ul>
-    </div>
-    <div class="footer-col">
-      <h4>Contact</h4>
-      <ul>
-        <li><a href="https://maps.google.com/?q=Pwani+Plaza+Kilindini+Mombasa" target="_blank" rel="noopener">Pwani Plaza, Mombasa</a></li>
-        <li><a href="#">P.O. Box 94041 – 80107</a></li>
-        <li><a href="tel:+254723672031">+254 723 672 031</a></li>
-        <li><a href="mailto:jastarlogisticslimited@gmail.com">Gmail</a></li>
-        <li><a href="mailto:jastarlo@jastarlogisticslimited.co.ke">Official Email</a></li>
-      </ul>
-    </div>
-  </div>
-  <div class="footer-bottom">
-    <span>© 2025 <strong>Jastar Logistics Limited</strong>. All rights reserved.</span>
-    <span>Pwani Plaza · Kilindini · Mombasa, Kenya</span>
-  </div>
-</footer>
-
-<script src="main.js"></script>
+    <script src="script.js"></script>
+    <script src="booking-documents.js"></script>
 </body>
 </html>
-
