@@ -18,15 +18,14 @@ let _docFilter = 'pending_review';
 let _docRowsCache = [];
 let _docBookingsCache = {};
 let _storageZonesCache = [];
+let _docCountsByBooking = {}; // bookingId -> { total, pending }
 
 function docBadge(status) {
   const meta = DOC_STATUS_META[status] || { cls: 's-off_duty', label: status || '—' };
   return `<span class="sbadge ${meta.cls}">${meta.label}</span>`;
 }
 
-/* uploaded_by / reviewed_by are profile uuids — resolve against the
-   profiles already loaded into state.db, falling back gracefully if a
-   user record isn't found (e.g. deleted account). */
+
 function profileName(userId) {
   if (!userId) return null;
   const p = state.db.profiles.find(p => p.id === userId);
@@ -93,8 +92,8 @@ function docRowHtml(d) {
     : (booking ? `${sanitize(booking.full_name || 'Unknown')} · ${sanitize(booking.email || '')}` : 'Unknown submitter');
   const cont = d.container_no || booking?.container;
   const contRef = cont
-    ? `<span class="mono" style="color:var(--gold)">${sanitize(cont)}</span>`
-    : (d.booking_id ? `<span class="mono" style="font-size:10px;color:var(--text-3)">Booking ${d.booking_id.slice(0,8)}</span>` : '');
+    ? `<span class="mono" style="color:var(--gold);cursor:pointer" onclick="event.stopPropagation();closeModal();showContainerDetail('${sanitize(cont)}')">${sanitize(cont)}</span>`
+    : (d.booking_id ? `<span class="mono" style="font-size:10px;color:var(--text-3);cursor:pointer" onclick="event.stopPropagation();showPublicBookingDetail('${d.booking_id}')">Booking ${d.booking_id.slice(0,8)}</span>` : '');
 
   return `
   <div class="req-card">
@@ -168,9 +167,10 @@ async function showDocumentDetail(id) {
       <div class="fg" style="margin:0"><label>Uploaded</label><div style="font-size:12px;color:var(--text)">${fmtTime(d.uploaded_at)} · ${fmtDate(d.uploaded_at)}</div></div>
       <div class="fg" style="margin:0"><label>Uploaded By</label><div style="font-size:12px;color:var(--text)">${sanitize(uploaderName || booking?.full_name || '—')}</div></div>
       <div class="fg" style="margin:0"><label>Contact</label><div style="font-size:12px;color:var(--text)">${sanitize(booking?.email || '—')}</div></div>
-      <div class="fg" style="margin:0"><label>Container</label><div class="mono" style="font-size:12px;color:var(--gold)">${sanitize(cont || '—')}</div></div>
-      <div class="fg" style="margin:0"><label>Trip</label><div style="font-size:12px;color:var(--text)">${d.trip_id ? `<a href="#" onclick="closeModal();showTripDetail('${d.trip_id}');return false">View Trip →</a>` : '—'}</div></div>
+      <div class="fg" style="margin:0"><label>Container</label><div class="mono" style="font-size:12px;color:var(--gold)">${cont ? `<a href="#" onclick="closeModal();showContainerDetail('${sanitize(cont)}');return false">${sanitize(cont)} →</a>` : '—'}</div></div>
+      <div class="fg" style="margin:0"><label>Booking</label><div style="font-size:12px;color:var(--text)">${d.booking_id ? `<a href="#" onclick="showPublicBookingDetail('${d.booking_id}');return false">View Booking →</a>` : '—'}</div></div>
     </div>
+    ${d.trip_id ? `<div class="fg"><label>Linked Trip</label><div style="font-size:12px"><a href="#" onclick="closeModal();showTripDetail('${d.trip_id}');return false">View Trip →</a></div></div>` : ''}
     ${d.status !== 'pending_review' ? `
       <div class="fg"><label>Review Notes</label><div style="font-size:12px;color:var(--text-2);padding:10px;background:var(--surface);border-radius:5px">${sanitize(d.review_notes || '—')}</div></div>
       <div style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-3);margin-bottom:10px">Reviewed by ${sanitize(reviewerName || '—')} · ${d.reviewed_at ? fmtDate(d.reviewed_at) : '—'}</div>
@@ -338,10 +338,12 @@ async function deleteStorageZone(id) {
   renderStorageAvailability();
 }
 
-/* ── Wire into the core app without touching script.js ────────────── */
+
+
 sectionRenderers.docverification = renderDocVerification;
 SECTION_META.docverification = ['Operations', 'Document Verification'];
 
+/* 1. Badge count (unchanged behaviour, kept for the sidebar pill) */
 const _origBuildBadgesForDocs = buildBadges;
 buildBadges = function () {
   _origBuildBadgesForDocs();
@@ -360,4 +362,119 @@ async function updateDocVerificationBadge() {
     console.error('Doc badge count failed:', e.message);
     badge.style.display = 'none';
   }
+}
+
+/* 2. Dashboard alert: surfaces pending documents in the bell/alerts panel */
+const _origBuildAlertsForDocs = buildAlerts;
+buildAlerts = function () {
+  _origBuildAlertsForDocs();
+  appendPendingDocAlerts();
+};
+
+async function appendPendingDocAlerts() {
+  const list = document.getElementById('alertsList');
+  if (!list || !state.currentUser || !isAdmin()) return;
+  try {
+    const { count, error } = await supabase.from('booking_documents').select('id', { count: 'exact', head: true }).eq('status', 'pending_review');
+    if (error) throw error;
+    if (!count) return;
+    if (list.querySelector('.empty-state')) list.innerHTML = ''; // clear "no active alerts" placeholder if present
+    const row = document.createElement('div');
+    row.className = 'alert-item warn';
+    row.style.cursor = 'pointer';
+    row.onclick = () => { toggleAlerts(); showSection('docverification', document.querySelector('[data-section="docverification"]')); };
+    row.innerHTML = `<div class="alert-dot-sm" style="background:var(--amber)"></div><span>${count} document${count===1?'':'s'} awaiting verification</span>`;
+    list.appendChild(row);
+    const dot = document.getElementById('alertDot');
+    if (dot) dot.style.display = 'block';
+  } catch (e) { console.warn('Pending doc alert check failed:', e.message); }
+}
+
+/* 3. Global search: surfaces documents matching a typed container number */
+const _origLiveSearch = liveSearch;
+window.liveSearch = function (q) {
+  _origLiveSearch(q);
+  appendDocSearchResults(q);
+};
+
+async function appendDocSearchResults(q) {
+  if (!q || q.length < 2 || !isAdmin()) return;
+  try {
+    const { data, error } = await supabase.from('booking_documents').select('id,doc_type,container_no,status').ilike('container_no', `%${q}%`).limit(3);
+    if (error || !data || !data.length) return;
+    const panel = document.getElementById('searchResults');
+    if (!panel) return;
+    data.forEach(d => {
+      const row = document.createElement('div');
+      row.className = 'search-result-item';
+      row.innerHTML = `<span class="search-result-type">Document</span><div><div style="font-size:12px;color:var(--text)">${DOC_TYPE_LABELS[d.doc_type]||d.doc_type} — ${sanitize(d.container_no||'—')}</div><div style="font-size:10px;color:var(--text-3)">${d.status.replace('_',' ')}</div></div>`;
+      row.onclick = () => {
+        panel.style.display = 'none';
+        document.getElementById('globalSearch').value = '';
+        showSection('docverification', document.querySelector('[data-section="docverification"]'));
+        setTimeout(() => showDocumentDetail(d.id), 350);
+      };
+      panel.appendChild(row);
+    });
+    panel.style.display = 'block';
+  } catch (e) { /* best-effort — search stays silent on failure */ }
+}
+
+/* 4. Container detail modal: shows any documents linked to that container */
+const _origShowContainerDetail = showContainerDetail;
+window.showContainerDetail = async function (contRaw) {
+  _origShowContainerDetail(contRaw);
+  if (!isAdmin()) return;
+  const cont = (contRaw || '').trim().toUpperCase();
+  if (!cont) return;
+  try {
+    const { data, error } = await supabase.from('booking_documents').select('*').ilike('container_no', cont);
+    if (error || !data || !data.length) return;
+    const body = document.getElementById('modalBody');
+    if (!body) return;
+    const html = `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Linked Documents (${data.length})</div>` +
+      data.map(d => `<div class="activity-row" style="cursor:pointer" onclick="closeModal();showSection('docverification',document.querySelector('[data-section=&quot;docverification&quot;]'));setTimeout(()=>showDocumentDetail('${d.id}'),350)"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${DOC_TYPE_LABELS[d.doc_type]||d.doc_type}</div></div>${docBadge(d.status)}</div>`).join('');
+    body.insertAdjacentHTML('beforeend', html);
+  } catch (e) { /* silent */ }
+};
+
+/* 5. Public Bookings list: shows a document-status chip per booking,
+   batched into a single query instead of one call per row. */
+const _origRenderPublicBookings = renderPublicBookings;
+window.renderPublicBookings = async function () {
+  await _origRenderPublicBookings();
+  attachDocChipsToBookings();
+};
+
+async function attachDocChipsToBookings() {
+  const container = document.getElementById('publicBookingsList');
+  if (!container) return;
+  try {
+    const { data, error } = await supabase.from('booking_documents').select('booking_id,status');
+    if (error || !data) return;
+    _docCountsByBooking = {};
+    data.forEach(d => {
+      if (!d.booking_id) return;
+      const rec = _docCountsByBooking[d.booking_id] || { total: 0, pending: 0 };
+      rec.total++;
+      if (d.status === 'pending_review') rec.pending++;
+      _docCountsByBooking[d.booking_id] = rec;
+    });
+
+    container.querySelectorAll('button.modal-btn.ghost').forEach(btn => {
+      const m = btn.getAttribute('onclick')?.match(/showPublicBookingDetail\('([^']+)'\)/);
+      if (!m) return;
+      const bookingId = m[1];
+      const rec = _docCountsByBooking[bookingId];
+      if (!rec) return;
+      const card = btn.closest('div[style*="border:1px solid #333"]');
+      if (!card || card.querySelector('.doc-chip')) return;
+      const chip = document.createElement('span');
+      chip.className = 'sbadge doc-chip';
+      chip.style.marginLeft = '6px';
+      chip.classList.add(rec.pending ? 's-pending' : 's-approved');
+      chip.textContent = rec.pending ? `${rec.pending} doc(s) pending` : `${rec.total} doc(s) verified`;
+      btn.insertAdjacentElement('afterend', chip);
+    });
+  } catch (e) { /* silent — chip is a nice-to-have, not critical */ }
 }
