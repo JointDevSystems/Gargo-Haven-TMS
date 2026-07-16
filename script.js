@@ -1070,8 +1070,6 @@ const SECTION_META = {
   usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
   docverification: ['Operations', 'Document Verification'],
 };
-  
-};
 
 function showSection(sec, btn) {
   if (!canSeeSection(sec)) { toast('You don\'t have access to this section', 'error'); return; }
@@ -1123,8 +1121,6 @@ const sectionRenderers = {
   usermgmt:renderUserMgmt, settings:renderSettings,
   publicbookings: renderPublicBookings,
   docverification: (...a) => renderDocVerification(...a),
-};
-  publicbookings: renderPublicBookings,
 };
 
 function toggleSidebar() { document.body.classList.toggle('sidebar-open'); }
@@ -3951,36 +3947,134 @@ document.addEventListener('DOMContentLoaded', ()=>{
 function liveSearch(q) {
   const panel = document.getElementById('searchResults');
   if (!q || q.length < 2) { panel.style.display='none'; return; }
-  const results = [];
-  const db = state.db;
   q = q.toLowerCase().trim();
+  const db = state.db;
+  const has = (arr) => arr.some(v => (v || '').toString().toLowerCase().includes(q));
+  const groups = [];
+  const pushGroup = (label, items) => { if (items.length) groups.push({ label, items }); };
 
+  pushGroup('Trucks', db.trucks.filter(t =>
+    has([t.reg, t.make, t.type, t.colour, t.vin, t.licencePlate, t.notes])
+  ).slice(0,6).map(t => ({
+    primary: `${t.reg} — ${t.make} (${t.year})`,
+    secondary: `${t.status.replace('_',' ')} · ${t.driver ? driverName(t.driver) : 'Unassigned'} · Fuel ${t.fuelPct}% · ${fmt(t.mileage)} km`,
+    fn: `showTruckDetail('${t.id}')`,
+  })));
 
-  const containerMatches = new Set();
-  db.trips.forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
-  db.shutouts.forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
-  db.interchange.forEach(i=>{ if ((i.container||'').toLowerCase().includes(q)) containerMatches.add(i.container.toUpperCase()); });
-  [...containerMatches].slice(0,3).forEach(cont=>{
+  pushGroup('Drivers', db.drivers.filter(d =>
+    has([d.name, d.phone, d.licence, d.idNo, d.location])
+  ).slice(0,6).map(d => ({
+    primary: d.name,
+    secondary: `${d.status.replace('_',' ')} · ${d.phone} · ${d.truckId ? truckName(d.truckId) : 'No truck'} · Lic ${d.licence}`,
+    fn: `showDriverDetail('${d.id}')`,
+  })));
+
+  const containerSet = new Set();
+  db.trips.forEach(t => { if ((t.container||'').toLowerCase().includes(q)) containerSet.add(t.container.toUpperCase()); });
+  db.shutouts.forEach(s => { if ((s.container||'').toLowerCase().includes(q)) containerSet.add(s.container.toUpperCase()); });
+  db.interchange.forEach(i => { if ((i.container||'').toLowerCase().includes(q)) containerSet.add(i.container.toUpperCase()); });
+  pushGroup('Containers', [...containerSet].slice(0,6).map(cont => {
     const live = findLiveTripByContainer(cont);
-    results.push({ type:'Container', label:cont, sub: live ? `Active — ${live.status.replace('_',' ')}` : 'No active trip', fn: `showContainerDetail('${cont}')` });
-  });
+    return {
+      primary: cont,
+      secondary: live ? `Active — ${live.status.replace('_',' ')} · ${live.origin} → ${live.dest}` : 'No active trip',
+      fn: `showContainerDetail('${cont}')`,
+    };
+  }));
 
-  db.trucks.filter(t=>t.reg.toLowerCase().includes(q)||t.make.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
-    results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:t.status, fn: `showTruckDetail('${t.id}')` });
-  });
-  db.drivers.filter(d=>d.name.toLowerCase().includes(q)||d.phone.includes(q)).slice(0,3).forEach(d=>{
-    results.push({ type:'Driver', label:d.name, sub:d.status, fn: `showDriverDetail('${d.id}')` });
-  });
-  db.trips.filter(t=>t.origin.toLowerCase().includes(q)||t.dest.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
-    results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:t.status, fn: `showTripDetail('${t.id}')` });
-  });
-  db.invoices.filter(i=>i.client.toLowerCase().includes(q)||i.ref.toLowerCase().includes(q)).slice(0,2).forEach(i=>{
-    results.push({ type:'Invoice', label: `${i.ref} — ${i.client}`, sub:i.status, fn: `showInvoiceDetail('${i.id}')` });
-  });
-  panel.innerHTML = results.length
-    ? results.map(r=>`<div class="search-result-item" onclick="${r.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''"><span class="search-result-type">${r.type}</span><div><div style="font-size:12px;color:var(--text)">${r.label}</div><div style="font-size:10px;color:var(--text-3)">${r.sub}</div></div></div>`).join('')
+  pushGroup('Trips', db.trips.filter(t =>
+    has([t.ref, t.notes, t.workType, t.origin, t.dest, t.ctype])
+  ).slice(0,6).map(t => ({
+    primary: `${t.container} — ${t.origin} → ${t.dest}`,
+    secondary: `${t.status.replace('_',' ')} · ${t.workType} · Ref ${t.ref} · ${truckName(t.truckId)}`,
+    fn: `showTripDetail('${t.id}')`,
+  })));
+
+  pushGroup('Shipping Lines', db.shippingLines.filter(l =>
+    has([l.code, l.name, l.contact])
+  ).slice(0,4).map(l => ({
+    primary: `${l.code} — ${l.name}`,
+    secondary: `${l.active ? 'Active' : 'Inactive'} · ${l.contact||''}`,
+    fn: `showSection('shippinglines', document.querySelector('[data-section="shippinglines"]'))`,
+  })));
+
+  pushGroup('Maintenance', db.maintenance.filter(m =>
+    has([m.desc, m.tech, m.type]) || truckName(m.truckId).toLowerCase().includes(q)
+  ).slice(0,4).map(m => ({
+    primary: `${truckName(m.truckId)} — ${m.type}`,
+    secondary: `${m.status.replace('_',' ')} · ${(m.desc||'').slice(0,55)}`,
+    fn: `showMaintDetail('${m.id}')`,
+  })));
+
+  pushGroup('Fuel Logs', db.fuel.filter(f =>
+    has([f.station, f.receipt]) || truckName(f.truckId).toLowerCase().includes(q) || driverName(f.driverId).toLowerCase().includes(q)
+  ).slice(0,4).map(f => ({
+    primary: `${truckName(f.truckId)} — ${f.litres}L`,
+    secondary: `${f.station} · ${fmtDate(f.date)} · ${fmtKsh(f.litres*f.pricePerLitre)}`,
+    fn: `showSection('fuel', document.querySelector('[data-section="fuel"]'))`,
+  })));
+
+  pushGroup('Shutouts', db.shutouts.filter(s =>
+    has([s.vessel, s.voyage, s.reason, s.notes])
+  ).slice(0,4).map(s => ({
+    primary: s.container,
+    secondary: `${s.status} · ${s.vessel} · ${s.reason||''}`,
+    fn: `showContainerDetail('${s.container}')`,
+  })));
+
+  pushGroup('Interchange', db.interchange.filter(i =>
+    has([i.type, i.condition, i.notes])
+  ).slice(0,4).map(i => ({
+    primary: `${i.container} — ${i.type}`,
+    secondary: `${i.status} · ${i.condition}`,
+    fn: `showContainerDetail('${i.container}')`,
+  })));
+
+  pushGroup('Requisitions', db.requisitions.filter(r =>
+    has([r.items, r.category, r.requester, r.notes])
+  ).slice(0,4).map(r => ({
+    primary: `${r.category} — ${fmtKsh(r.amount)}`,
+    secondary: `${r.status} · ${r.requester}`,
+    fn: `showSection('requisitions', document.querySelector('[data-section="requisitions"]'))`,
+  })));
+
+  pushGroup('Workshop', db.workshop.filter(w =>
+    has([w.title, w.desc, w.tech]) || truckName(w.truckId).toLowerCase().includes(q)
+  ).slice(0,4).map(w => ({
+    primary: w.title,
+    secondary: `${truckName(w.truckId)} · ${w.status.replace('_',' ')}`,
+    fn: `showSection('workshop', document.querySelector('[data-section="workshop"]'))`,
+  })));
+
+  pushGroup('Invoices', db.invoices.filter(i =>
+    has([i.client, i.ref, i.notes])
+  ).slice(0,4).map(i => ({
+    primary: `${i.ref} — ${i.client}`,
+    secondary: `${i.status} · ${fmtKsh(i.total)}`,
+    fn: `showInvoiceDetail('${i.id}')`,
+  })));
+
+  if (isAdmin()) {
+    pushGroup('Users', db.profiles.filter(u =>
+      has([u.name, u.username, u.email])
+    ).slice(0,4).map(u => ({
+      primary: u.name,
+      secondary: `${roleLabel(u.role)} · ${u.username}`,
+      fn: `showUserDetail('${u.id}')`,
+    })));
+  }
+
+  panel.innerHTML = groups.length
+    ? groups.map(g => `
+      <div class="search-group-label">${g.label}</div>
+      ${g.items.map(it => `
+        <div class="search-result-item" onclick="${it.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''">
+          <span class="search-result-type">${g.label}</span>
+          <div><div style="font-size:12px;color:var(--text)">${it.primary}</div><div style="font-size:10px;color:var(--text-3)">${it.secondary}</div></div>
+        </div>`).join('')}
+    `).join('')
     : `<div style="padding:12px 16px;font-size:11.5px;color:var(--text-3)">No results for "${q}"</div>`;
-  panel.style.display='block';
+  panel.style.display = 'block';
   if (typeof appendDocSearchResults === 'function') appendDocSearchResults(q);
 }
 
