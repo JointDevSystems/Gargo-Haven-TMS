@@ -1,4 +1,4 @@
-'use strict';
+use strict';
 
 
 
@@ -65,7 +65,7 @@ function copyDocSetupSQL() {
     .catch(() => toast('Could not copy — select and copy manually', 'error'));
 }
 
- function docSetupNotice(compact) {
+function docSetupNotice(compact) {
   return `<div class="vault-locked-banner" style="grid-column:1/-1">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
     <div>
@@ -74,7 +74,7 @@ function copyDocSetupSQL() {
       <button class="action-btn ghost" style="margin-top:10px" onclick="copyDocSetupSQL()">⧉ Copy Setup SQL</button>
     </div>
   </div>`;
-
+}
 
 /* ── Section entry point ──────────────────────────────────────────── */
 async function renderDocVerification() {
@@ -353,7 +353,7 @@ async function deleteStorageZone(id) {
   renderStorageAvailability();
 }
 
-/* ── Wire into the core app without touching script.js ────────────── */
+
 sectionRenderers.docverification = renderDocVerification;
 SECTION_META.docverification = ['Operations', 'Document Verification'];
 
@@ -372,8 +372,7 @@ async function updateDocVerificationBadge() {
     badge.textContent = count || '';
     badge.style.display = count ? 'inline' : 'none';
   } catch (e) {
-    // Table probably isn't set up yet — fail silently rather than
-    // spamming the console every time badges refresh.
+
     badge.style.display = 'none';
   }
 }
