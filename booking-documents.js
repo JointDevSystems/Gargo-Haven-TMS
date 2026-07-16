@@ -18,13 +18,11 @@ let _docFilter = 'pending_review';
 let _docRowsCache = [];
 let _docBookingsCache = {};
 let _storageZonesCache = [];
-let _docCountsByBooking = {}; // bookingId -> { total, pending }
 
 function docBadge(status) {
   const meta = DOC_STATUS_META[status] || { cls: 's-off_duty', label: status || '—' };
   return `<span class="sbadge ${meta.cls}">${meta.label}</span>`;
 }
-
 
 function profileName(userId) {
   if (!userId) return null;
@@ -115,10 +113,6 @@ function docRowHtml(d) {
 }
 
 /* ── Document detail modal ────────────────────────────────────────── */
-/* Signed URLs are generated on demand (only when a document is opened)
-   rather than for every row in the list — the bucket is private, so a
-   fresh signed URL is needed each time, and doing that for every row
-   up front would mean dozens of storage calls just to render a list. */
 async function getDocSignedUrl(filePath) {
   if (!filePath) return null;
   try {
@@ -338,17 +332,12 @@ async function deleteStorageZone(id) {
   renderStorageAvailability();
 }
 
-
-
-sectionRenderers.docverification = renderDocVerification;
-SECTION_META.docverification = ['Operations', 'Document Verification'];
-
-/* 1. Badge count (unchanged behaviour, kept for the sidebar pill) */
-const _origBuildBadgesForDocs = buildBadges;
-buildBadges = function () {
-  _origBuildBadgesForDocs();
-  updateDocVerificationBadge();
-};
+/* ══════════════════════════════════════════════════════════════════
+   CROSS-LINKING HOOKS — called directly from script.js (buildBadges,
+   buildAlerts, liveSearch, showContainerDetail, showTripDetail,
+   renderReport, renderPublicBookings). No monkey-patching: script.js
+   contains typeof-guarded calls to these functions by name.
+══════════════════════════════════════════════════════════════════ */
 
 async function updateDocVerificationBadge() {
   const badge = document.getElementById('badge-docverification');
@@ -364,13 +353,6 @@ async function updateDocVerificationBadge() {
   }
 }
 
-/* 2. Dashboard alert: surfaces pending documents in the bell/alerts panel */
-const _origBuildAlertsForDocs = buildAlerts;
-buildAlerts = function () {
-  _origBuildAlertsForDocs();
-  appendPendingDocAlerts();
-};
-
 async function appendPendingDocAlerts() {
   const list = document.getElementById('alertsList');
   if (!list || !state.currentUser || !isAdmin()) return;
@@ -378,7 +360,7 @@ async function appendPendingDocAlerts() {
     const { count, error } = await supabase.from('booking_documents').select('id', { count: 'exact', head: true }).eq('status', 'pending_review');
     if (error) throw error;
     if (!count) return;
-    if (list.querySelector('.empty-state')) list.innerHTML = ''; // clear "no active alerts" placeholder if present
+    if (list.querySelector('.empty-state')) list.innerHTML = '';
     const row = document.createElement('div');
     row.className = 'alert-item warn';
     row.style.cursor = 'pointer';
@@ -389,13 +371,6 @@ async function appendPendingDocAlerts() {
     if (dot) dot.style.display = 'block';
   } catch (e) { console.warn('Pending doc alert check failed:', e.message); }
 }
-
-/* 3. Global search: surfaces documents matching a typed container number */
-const _origLiveSearch = liveSearch;
-window.liveSearch = function (q) {
-  _origLiveSearch(q);
-  appendDocSearchResults(q);
-};
 
 async function appendDocSearchResults(q) {
   if (!q || q.length < 2 || !isAdmin()) return;
@@ -420,31 +395,62 @@ async function appendDocSearchResults(q) {
   } catch (e) { /* best-effort — search stays silent on failure */ }
 }
 
-/* 4. Container detail modal: shows any documents linked to that container */
-const _origShowContainerDetail = showContainerDetail;
-window.showContainerDetail = async function (contRaw) {
-  _origShowContainerDetail(contRaw);
+async function appendContainerLinkedDocuments(cont) {
   if (!isAdmin()) return;
-  const cont = (contRaw || '').trim().toUpperCase();
-  if (!cont) return;
   try {
     const { data, error } = await supabase.from('booking_documents').select('*').ilike('container_no', cont);
     if (error || !data || !data.length) return;
     const body = document.getElementById('modalBody');
-    if (!body) return;
+    if (!body || body.dataset.container !== cont) return; // modal moved on to something else
     const html = `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Linked Documents (${data.length})</div>` +
       data.map(d => `<div class="activity-row" style="cursor:pointer" onclick="closeModal();showSection('docverification',document.querySelector('[data-section=&quot;docverification&quot;]'));setTimeout(()=>showDocumentDetail('${d.id}'),350)"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${DOC_TYPE_LABELS[d.doc_type]||d.doc_type}</div></div>${docBadge(d.status)}</div>`).join('');
     body.insertAdjacentHTML('beforeend', html);
   } catch (e) { /* silent */ }
-};
+}
 
-/* 5. Public Bookings list: shows a document-status chip per booking,
-   batched into a single query instead of one call per row. */
-const _origRenderPublicBookings = renderPublicBookings;
-window.renderPublicBookings = async function () {
-  await _origRenderPublicBookings();
-  attachDocChipsToBookings();
-};
+async function appendTripLinkedDocuments(tripId) {
+  if (!isAdmin()) return;
+  try {
+    const { data, error } = await supabase.from('booking_documents').select('*').eq('trip_id', tripId);
+    if (error || !data || !data.length) return;
+    const body = document.getElementById('modalBody');
+    if (!body || body.dataset.tripId !== tripId) return;
+    const html = `<div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:14px 0 8px">Linked Documents (${data.length})</div>` +
+      data.map(d => `<div class="activity-row" style="cursor:pointer" onclick="closeModal();showSection('docverification',document.querySelector('[data-section=&quot;docverification&quot;]'));setTimeout(()=>showDocumentDetail('${d.id}'),350)"><div style="flex:1"><div style="font-size:11.5px;color:var(--text)">${DOC_TYPE_LABELS[d.doc_type]||d.doc_type}</div></div>${docBadge(d.status)}</div>`).join('');
+    body.insertAdjacentHTML('beforeend', html);
+  } catch (e) { /* silent */ }
+}
+
+async function renderDocumentsReportTab(out) {
+  if (!isAdmin()) { out.innerHTML = '<div class="empty-state"><div class="empty-state-label">Admin rights required</div></div>'; return; }
+  out.innerHTML = `<div class="report-block"><h3>Document Verification</h3><div class="empty-state" style="padding:10px 0"><div class="empty-state-label">Loading…</div></div></div>`;
+  try {
+    const { data, error } = await supabase.from('booking_documents').select('status,doc_type,uploaded_at');
+    if (error) throw error;
+    const rows = data || [];
+    const pending  = rows.filter(r=>r.status==='pending_review').length;
+    const verified = rows.filter(r=>r.status==='verified').length;
+    const rejected = rows.filter(r=>r.status==='rejected').length;
+    const byType = {};
+    rows.forEach(r=>{ byType[r.doc_type] = (byType[r.doc_type]||0)+1; });
+    out.innerHTML = `
+      <div class="report-block">
+        <h3>Document Verification Summary</h3>
+        ${reportRow('Total Documents', rows.length)}
+        ${reportRow('Pending Review', pending)}
+        ${reportRow('Verified', verified)}
+        ${reportRow('Rejected', rejected)}
+      </div>
+      <div class="report-block">
+        <h3>By Document Type</h3>
+        ${Object.entries(byType).map(([t,c])=>reportRow(DOC_TYPE_LABELS[t]||t, c)).join('') || '<div style="color:var(--text-3);font-size:12px">No documents yet</div>'}
+      </div>
+      <div style="margin-top:4px"><button class="action-btn ghost" onclick="showSection('docverification', document.querySelector('[data-section=&quot;docverification&quot;]'))">Open Document Verification →</button></div>
+    `;
+  } catch (e) {
+    out.innerHTML = `<div class="report-block"><h3>Document Verification</h3><div class="empty-state"><div class="empty-state-label">Could not load — ${sanitize(e.message)}</div></div></div>`;
+  }
+}
 
 async function attachDocChipsToBookings() {
   const container = document.getElementById('publicBookingsList');
@@ -452,29 +458,23 @@ async function attachDocChipsToBookings() {
   try {
     const { data, error } = await supabase.from('booking_documents').select('booking_id,status');
     if (error || !data) return;
-    _docCountsByBooking = {};
+    const counts = {};
     data.forEach(d => {
       if (!d.booking_id) return;
-      const rec = _docCountsByBooking[d.booking_id] || { total: 0, pending: 0 };
+      const rec = counts[d.booking_id] || { total: 0, pending: 0 };
       rec.total++;
       if (d.status === 'pending_review') rec.pending++;
-      _docCountsByBooking[d.booking_id] = rec;
+      counts[d.booking_id] = rec;
     });
-
-    container.querySelectorAll('button.modal-btn.ghost').forEach(btn => {
-      const m = btn.getAttribute('onclick')?.match(/showPublicBookingDetail\('([^']+)'\)/);
-      if (!m) return;
-      const bookingId = m[1];
-      const rec = _docCountsByBooking[bookingId];
-      if (!rec) return;
-      const card = btn.closest('div[style*="border:1px solid #333"]');
-      if (!card || card.querySelector('.doc-chip')) return;
+    container.querySelectorAll('[data-booking-id]').forEach(card => {
+      const rec = counts[card.dataset.bookingId];
+      if (!rec || card.querySelector('.doc-chip')) return;
       const chip = document.createElement('span');
-      chip.className = 'sbadge doc-chip';
+      chip.className = `sbadge doc-chip ${rec.pending ? 's-pending' : 's-approved'}`;
       chip.style.marginLeft = '6px';
-      chip.classList.add(rec.pending ? 's-pending' : 's-approved');
       chip.textContent = rec.pending ? `${rec.pending} doc(s) pending` : `${rec.total} doc(s) verified`;
-      btn.insertAdjacentElement('afterend', chip);
+      const badgeRow = card.querySelector('span.sbadge');
+      if (badgeRow) badgeRow.insertAdjacentElement('afterend', chip);
     });
-  } catch (e) { /* silent — chip is a nice-to-have, not critical */ }
+  } catch (e) { /* silent */ }
 }
