@@ -585,7 +585,7 @@ function findLineByCode(code, excludeId) {
 
 
 const ROLE_SIDEBAR = {
-  admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','docverification','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
   clerk:    ['trucks','drivers','trips','dispatch','publicbookings','shutout','interchange'],
   dispatch: ['trucks','drivers','trips','dispatch','publicbookings','shutout','interchange','fuel'],
   ops:      ['trucks','drivers','trips','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
@@ -1009,6 +1009,7 @@ function buildBadges() {
   set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
+  if (typeof updateDocVerificationBadge === 'function') updateDocVerificationBadge();
 }
 
 function buildAlerts() {
@@ -1044,6 +1045,7 @@ function buildAlerts() {
   }
   const dot=document.getElementById('alertDot');
   if(dot) dot.style.display=alerts.length?'block':'none';
+  if (typeof appendPendingDocAlerts === 'function') appendPendingDocAlerts();
 }
 
 function toggleAlerts() {
@@ -1066,6 +1068,8 @@ const SECTION_META = {
   reports:['Intelligence','Reports'], tripreports:['Intelligence','Trip Reports & Audit Centre'],
   livetracking:['Platform','Live Tracking'],
   usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
+  docverification: ['Operations', 'Document Verification'],
+};
   
 };
 
@@ -1117,6 +1121,9 @@ const sectionRenderers = {
   allocation:()=>renderAllocation('auto'), workanalysis:()=>renderWorkAnalysis('all'),
   reports:()=>renderReport('overview'), tripreports:trcInit, livetracking:initTrackingSection,
   usermgmt:renderUserMgmt, settings:renderSettings,
+  publicbookings: renderPublicBookings,
+  docverification: (...a) => renderDocVerification(...a),
+};
   publicbookings: renderPublicBookings,
 };
 
@@ -1362,8 +1369,10 @@ function showTripDetail(id) {
     ? `<div style="margin-bottom:14px"><div class="fg" style="margin:0 0 6px"><label>Container Photos (${t.containerImages.length})</label></div><div class="container-img-grid">${t.containerImages.map(src=>`<div class="container-img-thumb view-only"><img src="${src}" onclick="window.open('${src}','_blank')" /></div>`).join('')}</div></div>`
     : '';
   openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();jumpToCompleteDispatch('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
+  const mb = document.getElementById('modalBody');
+  if (mb) mb.dataset.tripId = id;
+  if (typeof appendTripLinkedDocuments === 'function') appendTripLinkedDocuments(id);
 }
-
 
 const TRIP_STATUS_RANK = { active:0, loaded:1, on_trip:2, delayed:2, breakdown:2, offloaded:3, completed:4 };
 const TRIP_ALL_STATUSES = Object.keys(TRIP_STATUS_RANK);
@@ -3094,6 +3103,9 @@ function renderReport(tab, btn) {
     if (!state.financeUnlocked) { openFinanceLock(()=>renderReport('revenue')); return; }
     const inv=db.invoices;
     out.innerHTML=`<div class="report-block"><h3>Revenue Report — CONFIDENTIAL</h3>${reportRow('Total Invoiced',fmtKsh(inv.reduce((s,i)=>s+i.total,0)))}${reportRow('Collected',fmtKsh(inv.reduce((s,i)=>s+i.paid,0)))}${reportRow('Outstanding',fmtKsh(inv.reduce((s,i)=>s+(i.total-i.paid),0)))}${reportRow('Overdue',fmtKsh(inv.filter(i=>i.status==='overdue').reduce((s,i)=>s+i.total,0)))}</div>`;
+  } else if(tab==='documents'){
+    if (typeof renderDocumentsReportTab === 'function') { renderDocumentsReportTab(out); }
+    else { out.innerHTML = '<div class="empty-state"><div class="empty-state-label">Document module not loaded</div></div>'; }
   }
 }
 
@@ -3969,6 +3981,7 @@ function liveSearch(q) {
     ? results.map(r=>`<div class="search-result-item" onclick="${r.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''"><span class="search-result-type">${r.type}</span><div><div style="font-size:12px;color:var(--text)">${r.label}</div><div style="font-size:10px;color:var(--text-3)">${r.sub}</div></div></div>`).join('')
     : `<div style="padding:12px 16px;font-size:11.5px;color:var(--text-3)">No results for "${q}"</div>`;
   panel.style.display='block';
+  if (typeof appendDocSearchResults === 'function') appendDocSearchResults(q);
 }
 
 
@@ -4017,6 +4030,9 @@ function showContainerDetail(contRaw) {
   const actionsHtml = actions.length ? `<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Actions</div><div style="display:flex;gap:6px;flex-wrap:wrap">${actions.join('')}</div></div>` : '';
 
   openModal(`Container — ${cont}`, `${summary}${tripsHtml}${shutoutsHtml}${interchangeHtml}${actionsHtml}`);
+  const mb = document.getElementById('modalBody');
+  if (mb) mb.dataset.container = cont;
+  if (typeof appendContainerLinkedDocuments === 'function') appendContainerLinkedDocuments(cont);
 }
 
 function handleSearch(q) {
@@ -4198,7 +4214,7 @@ async function renderPublicBookings() {
       }
     }
     return `
-    <div style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
+    <div data-booking-id="${b.id}" style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
       <div><strong>${sanitize(b.full_name)}</strong> (${sanitize(b.email)})</div>
       <div>Service: ${sanitize(b.service_type)}</div>
 <div>Container: ${sanitize(b.container) || 'Not provided'}</div>
@@ -4220,6 +4236,7 @@ async function renderPublicBookings() {
     badge.textContent = pending || '';
     badge.style.display = pending ? 'inline' : 'none';
   }
+  if (typeof attachDocChipsToBookings === 'function') attachDocChipsToBookings();
 }
 
 
