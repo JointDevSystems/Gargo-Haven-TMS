@@ -1,5 +1,6 @@
 'use strict';
 
+const DOC_BUCKET = 'booking-documents';
 
 const DOC_TYPE_LABELS = {
   guarantee_form: 'Guarantee Form',
@@ -23,6 +24,15 @@ function docBadge(status) {
   return `<span class="sbadge ${meta.cls}">${meta.label}</span>`;
 }
 
+/* uploaded_by / reviewed_by are profile uuids — resolve against the
+   profiles already loaded into state.db, falling back gracefully if a
+   user record isn't found (e.g. deleted account). */
+function profileName(userId) {
+  if (!userId) return null;
+  const p = state.db.profiles.find(p => p.id === userId);
+  return p ? p.name : null;
+}
+
 /* ── Section entry point ──────────────────────────────────────────── */
 async function renderDocVerification() {
   if (!isAdmin()) { toast("You don't have access to this section", 'error'); return; }
@@ -43,7 +53,7 @@ async function renderDocList() {
   el.innerHTML = `<div class="empty-state"><div class="empty-state-label">Loading documents…</div></div>`;
 
   try {
-    let q = supabase.from('booking_documents').select('*').order('created_at', { ascending: false });
+    let q = supabase.from('booking_documents').select('*').order('uploaded_at', { ascending: false });
     if (_docFilter !== 'all') q = q.eq('status', _docFilter);
     const { data, error } = await q;
     if (error) throw error;
@@ -77,23 +87,24 @@ function renderDocListRows(rows) {
 
 function docRowHtml(d) {
   const booking = _docBookingsCache[d.booking_id];
-  const who = booking
-    ? `${sanitize(booking.full_name || 'Unknown')} · ${sanitize(booking.email || '')}`
-    : (d.submitted_by ? sanitize(d.submitted_by) : 'Unknown submitter');
-  const contRef = booking?.container
-    ? `<span class="mono" style="color:var(--gold)">${sanitize(booking.container)}</span>`
+  const uploaderName = profileName(d.uploaded_by);
+  const who = uploaderName
+    ? sanitize(uploaderName)
+    : (booking ? `${sanitize(booking.full_name || 'Unknown')} · ${sanitize(booking.email || '')}` : 'Unknown submitter');
+  const cont = d.container_no || booking?.container;
+  const contRef = cont
+    ? `<span class="mono" style="color:var(--gold)">${sanitize(cont)}</span>`
     : (d.booking_id ? `<span class="mono" style="font-size:10px;color:var(--text-3)">Booking ${d.booking_id.slice(0,8)}</span>` : '');
 
   return `
   <div class="req-card">
     <div class="req-card-head">
       <div>
-        <div style="font-size:12.5px;font-weight:700;color:var(--text)">${DOC_TYPE_LABELS[d.document_type] || d.document_type}</div>
-        <div class="req-meta">${who} · ${fmtDate(d.created_at)}</div>
+        <div style="font-size:12.5px;font-weight:700;color:var(--text)">${DOC_TYPE_LABELS[d.doc_type] || d.doc_type}</div>
+        <div class="req-meta">${who} · ${fmtDate(d.uploaded_at)}</div>
       </div>
       <div style="text-align:right">${docBadge(d.status)}${contRef ? `<div style="margin-top:4px">${contRef}</div>` : ''}</div>
     </div>
-    ${d.notes ? `<div class="req-items">${sanitize(d.notes)}</div>` : ''}
     <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
       <button class="modal-btn ghost" onclick="showDocumentDetail('${d.id}')">View</button>
       ${d.status === 'pending_review' ? `
@@ -105,40 +116,64 @@ function docRowHtml(d) {
 }
 
 /* ── Document detail modal ────────────────────────────────────────── */
-function docFilePreviewHtml(d) {
-  if (!d.file_data) return '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No file attached</div></div>';
-  const isImage = /^data:image\//.test(d.file_data);
-  const isPdf   = /^data:application\/pdf/.test(d.file_data) || /\.pdf$/i.test(d.file_name || '');
-  if (isImage) {
-    return `<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px"><img src="${d.file_data}" style="width:100%;display:block;cursor:zoom-in" onclick="window.open('${d.file_data}','_blank')"/></div>`;
+/* Signed URLs are generated on demand (only when a document is opened)
+   rather than for every row in the list — the bucket is private, so a
+   fresh signed URL is needed each time, and doing that for every row
+   up front would mean dozens of storage calls just to render a list. */
+async function getDocSignedUrl(filePath) {
+  if (!filePath) return null;
+  try {
+    const { data, error } = await supabase.storage.from(DOC_BUCKET).createSignedUrl(filePath, 3600);
+    if (error) throw error;
+    return data?.signedUrl || null;
+  } catch (e) {
+    console.error('Signed URL generation failed:', e.message);
+    return null;
   }
-  if (isPdf) {
-    return `<div class="ops-notice" style="margin-bottom:14px"><span>${sanitize(d.file_name || 'document.pdf')}</span><a href="${d.file_data}" target="_blank" style="margin-left:auto">Open PDF →</a></div>`;
-  }
-  return `<div class="ops-notice" style="margin-bottom:14px"><span>${sanitize(d.file_name || 'Attached file')}</span><a href="${d.file_data}" target="_blank" download="${sanitize(d.file_name || 'document')}" style="margin-left:auto">Download →</a></div>`;
 }
 
-function showDocumentDetail(id) {
+function docFilePreviewHtml(d, signedUrl) {
+  if (!d.file_path) return '<div class="empty-state" style="padding:20px"><div class="empty-state-label">No file attached</div></div>';
+  if (!signedUrl) return `<div class="ops-notice" style="margin-bottom:14px">Could not generate a preview link for this file. <button class="modal-btn ghost" onclick="showDocumentDetail('${d.id}')" style="margin-left:8px">Retry</button></div>`;
+
+  const mime = (d.mime_type || '').toLowerCase();
+  const isImage = mime.startsWith('image/');
+  const isPdf   = mime === 'application/pdf' || /\.pdf$/i.test(d.file_name || '');
+
+  if (isImage) {
+    return `<div style="border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:14px"><img src="${signedUrl}" style="width:100%;display:block;cursor:zoom-in" onclick="window.open('${signedUrl}','_blank')"/></div>`;
+  }
+  if (isPdf) {
+    return `<div class="ops-notice" style="margin-bottom:14px"><span>${sanitize(d.file_name || 'document.pdf')}</span><a href="${signedUrl}" target="_blank" style="margin-left:auto">Open PDF →</a></div>`;
+  }
+  return `<div class="ops-notice" style="margin-bottom:14px"><span>${sanitize(d.file_name || 'Attached file')}${d.file_size_bytes ? ` · ${Math.round(d.file_size_bytes/1024)} KB` : ''}</span><a href="${signedUrl}" target="_blank" download="${sanitize(d.file_name || 'document')}" style="margin-left:auto">Download →</a></div>`;
+}
+
+async function showDocumentDetail(id) {
   const d = _docRowsCache.find(r => r.id === id);
   if (!d) { toast('Document not found — refresh and try again', 'error'); return; }
   const booking = _docBookingsCache[d.booking_id];
 
-  openModal(DOC_TYPE_LABELS[d.document_type] || 'Document', `
-    ${docFilePreviewHtml(d)}
+  openModal(DOC_TYPE_LABELS[d.doc_type] || 'Document', `<div class="empty-state" style="padding:20px"><div class="empty-state-label">Loading file…</div></div>`);
+  const signedUrl = await getDocSignedUrl(d.file_path);
+
+  const uploaderName = profileName(d.uploaded_by);
+  const reviewerName = profileName(d.reviewed_by);
+  const cont = d.container_no || booking?.container;
+
+  openModal(DOC_TYPE_LABELS[d.doc_type] || 'Document', `
+    ${docFilePreviewHtml(d, signedUrl)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
       <div class="fg" style="margin:0"><label>Status</label><div>${docBadge(d.status)}</div></div>
-      <div class="fg" style="margin:0"><label>Submitted</label><div style="font-size:12px;color:var(--text)">${fmtTime(d.created_at)} · ${fmtDate(d.created_at)}</div></div>
-      <div class="fg" style="margin:0"><label>Submitted By</label><div style="font-size:12px;color:var(--text)">${sanitize(d.submitted_by || booking?.full_name || '—')}</div></div>
-      <div class="fg" style="margin:0"><label>Contact</label><div style="font-size:12px;color:var(--text)">${sanitize(d.submitted_by_email || booking?.email || '—')}</div></div>
-      ${booking ? `
-      <div class="fg" style="margin:0"><label>Container</label><div class="mono" style="font-size:12px;color:var(--gold)">${sanitize(booking.container || '—')}</div></div>
-      <div class="fg" style="margin:0"><label>Service Type</label><div style="font-size:12px;color:var(--text)">${sanitize(booking.service_type || '—')}</div></div>
-      ` : `<div class="fg" style="margin:0;grid-column:1/-1"><label>Booking Reference</label><div style="font-size:12px;color:var(--text-3)">${d.booking_id ? `#${d.booking_id.slice(0,8)} (booking record not found)` : 'Not linked to a booking'}</div></div>`}
+      <div class="fg" style="margin:0"><label>Uploaded</label><div style="font-size:12px;color:var(--text)">${fmtTime(d.uploaded_at)} · ${fmtDate(d.uploaded_at)}</div></div>
+      <div class="fg" style="margin:0"><label>Uploaded By</label><div style="font-size:12px;color:var(--text)">${sanitize(uploaderName || booking?.full_name || '—')}</div></div>
+      <div class="fg" style="margin:0"><label>Contact</label><div style="font-size:12px;color:var(--text)">${sanitize(booking?.email || '—')}</div></div>
+      <div class="fg" style="margin:0"><label>Container</label><div class="mono" style="font-size:12px;color:var(--gold)">${sanitize(cont || '—')}</div></div>
+      <div class="fg" style="margin:0"><label>Trip</label><div style="font-size:12px;color:var(--text)">${d.trip_id ? `<a href="#" onclick="closeModal();showTripDetail('${d.trip_id}');return false">View Trip →</a>` : '—'}</div></div>
     </div>
-    ${d.notes ? `<div class="fg"><label>Submitter Notes</label><div style="font-size:12px;color:var(--text-2);padding:10px;background:var(--surface);border-radius:5px">${sanitize(d.notes)}</div></div>` : ''}
     ${d.status !== 'pending_review' ? `
       <div class="fg"><label>Review Notes</label><div style="font-size:12px;color:var(--text-2);padding:10px;background:var(--surface);border-radius:5px">${sanitize(d.review_notes || '—')}</div></div>
-      <div style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-3);margin-bottom:10px">Reviewed by ${sanitize(d.reviewed_by || '—')} · ${d.reviewed_at ? fmtDate(d.reviewed_at) : '—'}</div>
+      <div style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-3);margin-bottom:10px">Reviewed by ${sanitize(reviewerName || '—')} · ${d.reviewed_at ? fmtDate(d.reviewed_at) : '—'}</div>
     ` : ''}
     ${d.status === 'pending_review' ? `
       <div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--border)">
@@ -157,11 +192,11 @@ async function verifyDocument(id) {
   toast('Saving…', 'info', 1200);
   const { error } = await supabase.from('booking_documents').update({
     status: 'verified',
-    reviewed_by: state.profile.username,
+    reviewed_by: state.currentUser.id,
     reviewed_at: new Date().toISOString(),
   }).eq('id', id);
   if (error) { toast(`Could not verify — ${error.message}`, 'error', 5000); return; }
-  addAudit(state.profile.username, 'Document Verified', `${DOC_TYPE_LABELS[d.document_type] || d.document_type} — ${id.slice(0,8)}`);
+  addAudit(state.profile.username, 'Document Verified', `${DOC_TYPE_LABELS[d.doc_type] || d.doc_type} — ${id.slice(0,8)}`);
   closeModal();
   toast('Document verified', 'success');
   renderDocList();
@@ -183,11 +218,11 @@ async function rejectDocument(id) {
   const { error } = await supabase.from('booking_documents').update({
     status: 'rejected',
     review_notes: sanitize(reason),
-    reviewed_by: state.profile.username,
+    reviewed_by: state.currentUser.id,
     reviewed_at: new Date().toISOString(),
   }).eq('id', id);
   if (error) { toast(`Could not reject — ${error.message}`, 'error', 5000); return; }
-  addAudit(state.profile.username, 'Document Rejected', `${d ? (DOC_TYPE_LABELS[d.document_type] || d.document_type) : 'Document'} — ${reason.slice(0,60)}`);
+  addAudit(state.profile.username, 'Document Rejected', `${d ? (DOC_TYPE_LABELS[d.doc_type] || d.doc_type) : 'Document'} — ${reason.slice(0,60)}`);
   closeModal();
   toast('Document rejected', 'warning');
   renderDocList();
@@ -217,16 +252,19 @@ function renderStorageZoneCards(zones) {
     return;
   }
   el.innerHTML = `<div class="truck-grid">${zones.map(z => {
-    const pct = z.capacity > 0 ? Math.min(100, Math.round((z.occupied / z.capacity) * 100)) : 0;
+    const cap = z.capacity_teu || 0;
+    const occ = z.occupied_teu || 0;
+    const pct = cap > 0 ? Math.min(100, Math.round((occ / cap) * 100)) : 0;
     const colour = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--amber)' : 'var(--green)';
     return `<div class="line-card">
-      <div class="line-code-badge">${sanitize(z.container_type || 'General')}</div>
+      <div class="line-code-badge">${z.active === false ? 'Inactive' : 'Active'}</div>
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px">${sanitize(z.zone_name)}</div>
-      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-3);margin-bottom:4px"><span>${z.occupied} / ${z.capacity} used</span><span style="color:${colour}">${pct}%</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-3);margin-bottom:4px"><span>${occ} / ${cap} TEU used</span><span style="color:${colour}">${pct}%</span></div>
       <div class="fsb-track"><div class="fsb-fill" style="width:${pct}%;background:${colour}"></div></div>
       ${isAdmin() ? `<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
         <button class="tbl-btn" onclick="adjustZoneOccupied('${z.id}',-1)">− Free bay</button>
         <button class="tbl-btn" onclick="adjustZoneOccupied('${z.id}',1)">+ Occupy bay</button>
+        <button class="tbl-btn" onclick="toggleZoneActive('${z.id}')">${z.active === false ? 'Reactivate' : 'Deactivate'}</button>
         <button class="tbl-btn" style="color:var(--red)" onclick="deleteStorageZone('${z.id}')">Delete</button>
       </div>` : ''}
     </div>`;
@@ -236,15 +274,11 @@ function renderStorageZoneCards(zones) {
 function showAddStorageZoneModal() {
   if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   openModal('Add Storage Zone', `
-    <div class="form-row-2">
-      <div class="fg"><label>Zone Name</label><input id="sz_name" placeholder="Yard A — Block 3"/></div>
-      <div class="fg"><label>Container Type</label><input id="sz_type" placeholder="General / Reefer / Hazmat"/></div>
-    </div>
+    <div class="fg"><label>Zone Name</label><input id="sz_name" placeholder="Yard A — Block 3"/></div>
     <div class="form-row-2">
       <div class="fg"><label>Capacity (TEU)</label><input id="sz_cap" type="number" placeholder="50"/></div>
-      <div class="fg"><label>Currently Occupied</label><input id="sz_occ" type="number" placeholder="0"/></div>
+      <div class="fg"><label>Currently Occupied (TEU)</label><input id="sz_occ" type="number" placeholder="0"/></div>
     </div>
-    <div class="fg"><label>Notes</label><input id="sz_notes" placeholder="Optional…"/></div>
     <button class="submit-btn" onclick="saveStorageZone()">Add Zone →</button>
   `);
 }
@@ -256,10 +290,9 @@ async function saveStorageZone() {
   const occ = Math.max(0, parseInt(document.getElementById('sz_occ').value) || 0);
   const row = {
     zone_name: sanitize(name),
-    container_type: sanitize(document.getElementById('sz_type').value.trim()) || 'General',
-    capacity: cap,
-    occupied: Math.min(occ, cap),
-    notes: sanitize(document.getElementById('sz_notes').value.trim()),
+    capacity_teu: cap,
+    occupied_teu: Math.min(occ, cap),
+    active: true,
     updated_at: new Date().toISOString(),
   };
   const { error } = await supabase.from('depot_storage_zones').insert(row);
@@ -274,11 +307,24 @@ async function adjustZoneOccupied(id, delta) {
   if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
   const z = _storageZonesCache.find(z => z.id === id);
   if (!z) return;
-  const next = Math.max(0, Math.min(z.capacity, z.occupied + delta));
-  if (next === z.occupied) return;
-  const { error } = await supabase.from('depot_storage_zones').update({ occupied: next, updated_at: new Date().toISOString() }).eq('id', id);
+  const cap = z.capacity_teu || 0;
+  const next = Math.max(0, Math.min(cap, (z.occupied_teu || 0) + delta));
+  if (next === z.occupied_teu) return;
+  const { error } = await supabase.from('depot_storage_zones').update({ occupied_teu: next, updated_at: new Date().toISOString() }).eq('id', id);
   if (error) { toast(`Could not update — ${error.message}`, 'error'); return; }
-  z.occupied = next;
+  z.occupied_teu = next;
+  renderStorageZoneCards(_storageZonesCache);
+}
+
+async function toggleZoneActive(id) {
+  if (!isAdmin()) { toast('Admin rights required', 'error'); return; }
+  const z = _storageZonesCache.find(z => z.id === id);
+  if (!z) return;
+  const next = !(z.active !== false);
+  const { error } = await supabase.from('depot_storage_zones').update({ active: next, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) { toast(`Could not update — ${error.message}`, 'error'); return; }
+  z.active = next;
+  addAudit(state.profile.username, 'Storage Zone Status', `${z.zone_name} → ${next ? 'active' : 'inactive'}`);
   renderStorageZoneCards(_storageZonesCache);
 }
 
