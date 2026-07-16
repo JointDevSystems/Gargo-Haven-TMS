@@ -13,33 +13,6 @@ const DOC_STATUS_META = {
   rejected:       { cls: 's-rejected', label: 'Rejected' },
 };
 
-const DOC_SETUP_SQL = `create table if not exists booking_documents (
-  id uuid primary key default gen_random_uuid(),
-  booking_id uuid references public_bookings(id) on delete set null,
-  document_type text not null check (document_type in ('guarantee_form','release_order','delivery_order')),
-  file_name text,
-  file_data text,
-  status text not null default 'pending_review' check (status in ('pending_review','verified','rejected')),
-  submitted_by text,
-  submitted_by_email text,
-  notes text,
-  review_notes text,
-  reviewed_by text,
-  reviewed_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists depot_storage_zones (
-  id uuid primary key default gen_random_uuid(),
-  zone_name text not null,
-  container_type text default 'General',
-  capacity int not null default 0,
-  occupied int not null default 0,
-  notes text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);`;
-
 let _docFilter = 'pending_review';
 let _docRowsCache = [];
 let _docBookingsCache = {};
@@ -48,30 +21,6 @@ let _storageZonesCache = [];
 function docBadge(status) {
   const meta = DOC_STATUS_META[status] || { cls: 's-off_duty', label: status || '—' };
   return `<span class="sbadge ${meta.cls}">${meta.label}</span>`;
-}
-
-function isMissingTableError(err) {
-  if (!err) return false;
-  const msg = (err.message || '').toLowerCase();
-  return err.code === '42P01' || msg.includes('does not exist') || msg.includes('could not find the table');
-}
-
-function copyDocSetupSQL() {
-  if (!navigator.clipboard) { toast('Clipboard not available — copy the SQL from booking-documents.js manually', 'warning'); return; }
-  navigator.clipboard.writeText(DOC_SETUP_SQL)
-    .then(() => toast('Setup SQL copied — paste into Supabase → SQL Editor', 'success'))
-    .catch(() => toast('Could not copy — select and copy manually', 'error'));
-}
-
-function docSetupNotice(compact) {
-  return `<div class="vault-locked-banner" style="grid-column:1/-1">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#C9A227" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-    <div>
-      <div class="title">${compact ? 'Storage zones not set up' : 'Document Verification not set up'}</div>
-      <div class="desc">${compact ? "The 'depot_storage_zones' table" : "The 'booking_documents' / 'depot_storage_zones' tables"} don't exist in Supabase yet. Run the setup SQL, then hit Refresh.</div>
-      <button class="action-btn ghost" style="margin-top:10px" onclick="copyDocSetupSQL()">⧉ Copy Setup SQL</button>
-    </div>
-  </div>`;
 }
 
 /* ── Section entry point ──────────────────────────────────────────── */
@@ -111,12 +60,8 @@ async function renderDocList() {
 
     renderDocListRows(rows);
   } catch (e) {
-    if (isMissingTableError(e)) {
-      el.innerHTML = docSetupNotice(false);
-    } else {
-      console.error('Document Verification query failed:', e.message);
-      el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠</div><div class="empty-state-label">Could not load documents</div><div class="empty-state-sub">${sanitize(e.message || 'Check your connection')}</div></div>`;
-    }
+    console.error('Document Verification query failed:', e.message);
+    el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠</div><div class="empty-state-label">Could not load documents</div><div class="empty-state-sub">${sanitize(e.message || 'Check your connection')}</div></div>`;
   }
 }
 
@@ -258,12 +203,8 @@ async function renderStorageAvailability() {
     _storageZonesCache = data || [];
     renderStorageZoneCards(_storageZonesCache);
   } catch (e) {
-    if (isMissingTableError(e)) {
-      el.innerHTML = docSetupNotice(true);
-    } else {
-      console.error('Storage availability query failed:', e.message);
-      el.innerHTML = `<div class="empty-state" style="padding:12px"><div class="empty-state-label">Could not load storage data</div></div>`;
-    }
+    console.error('Storage availability query failed:', e.message);
+    el.innerHTML = `<div class="empty-state" style="padding:12px"><div class="empty-state-label">Could not load storage data</div></div>`;
   }
 }
 
@@ -370,8 +311,7 @@ async function updateDocVerificationBadge() {
     badge.textContent = count || '';
     badge.style.display = count ? 'inline' : 'none';
   } catch (e) {
-    // Table probably isn't set up yet — fail silently rather than
-    // spamming the console every time badges refresh.
+    console.error('Doc badge count failed:', e.message);
     badge.style.display = 'none';
   }
 }
