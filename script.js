@@ -585,7 +585,7 @@ function findLineByCode(code, excludeId) {
 
 
 const ROLE_SIDEBAR = {
-  admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','docverification','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
   clerk:    ['trucks','drivers','trips','dispatch','publicbookings','shutout','interchange'],
   dispatch: ['trucks','drivers','trips','dispatch','publicbookings','shutout','interchange','fuel'],
   ops:      ['trucks','drivers','trips','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
@@ -1009,7 +1009,6 @@ function buildBadges() {
   set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
-  if (typeof updateDocVerificationBadge === 'function') updateDocVerificationBadge();
 }
 
 function buildAlerts() {
@@ -1045,7 +1044,6 @@ function buildAlerts() {
   }
   const dot=document.getElementById('alertDot');
   if(dot) dot.style.display=alerts.length?'block':'none';
-  if (typeof appendPendingDocAlerts === 'function') appendPendingDocAlerts();
 }
 
 function toggleAlerts() {
@@ -1068,7 +1066,7 @@ const SECTION_META = {
   reports:['Intelligence','Reports'], tripreports:['Intelligence','Trip Reports & Audit Centre'],
   livetracking:['Platform','Live Tracking'],
   usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
-  docverification: ['Operations', 'Document Verification'],
+  
 };
 
 function showSection(sec, btn) {
@@ -1120,7 +1118,6 @@ const sectionRenderers = {
   reports:()=>renderReport('overview'), tripreports:trcInit, livetracking:initTrackingSection,
   usermgmt:renderUserMgmt, settings:renderSettings,
   publicbookings: renderPublicBookings,
-  docverification: (...a) => renderDocVerification(...a),
 };
 
 function toggleSidebar() { document.body.classList.toggle('sidebar-open'); }
@@ -1365,10 +1362,8 @@ function showTripDetail(id) {
     ? `<div style="margin-bottom:14px"><div class="fg" style="margin:0 0 6px"><label>Container Photos (${t.containerImages.length})</label></div><div class="container-img-grid">${t.containerImages.map(src=>`<div class="container-img-thumb view-only"><img src="${src}" onclick="window.open('${src}','_blank')" /></div>`).join('')}</div></div>`
     : '';
   openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();jumpToCompleteDispatch('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
-  const mb = document.getElementById('modalBody');
-  if (mb) mb.dataset.tripId = id;
-  if (typeof appendTripLinkedDocuments === 'function') appendTripLinkedDocuments(id);
 }
+
 
 const TRIP_STATUS_RANK = { active:0, loaded:1, on_trip:2, delayed:2, breakdown:2, offloaded:3, completed:4 };
 const TRIP_ALL_STATUSES = Object.keys(TRIP_STATUS_RANK);
@@ -3099,9 +3094,6 @@ function renderReport(tab, btn) {
     if (!state.financeUnlocked) { openFinanceLock(()=>renderReport('revenue')); return; }
     const inv=db.invoices;
     out.innerHTML=`<div class="report-block"><h3>Revenue Report — CONFIDENTIAL</h3>${reportRow('Total Invoiced',fmtKsh(inv.reduce((s,i)=>s+i.total,0)))}${reportRow('Collected',fmtKsh(inv.reduce((s,i)=>s+i.paid,0)))}${reportRow('Outstanding',fmtKsh(inv.reduce((s,i)=>s+(i.total-i.paid),0)))}${reportRow('Overdue',fmtKsh(inv.filter(i=>i.status==='overdue').reduce((s,i)=>s+i.total,0)))}</div>`;
-  } else if(tab==='documents'){
-    if (typeof renderDocumentsReportTab === 'function') { renderDocumentsReportTab(out); }
-    else { out.innerHTML = '<div class="empty-state"><div class="empty-state-label">Document module not loaded</div></div>'; }
   }
 }
 
@@ -3947,135 +3939,36 @@ document.addEventListener('DOMContentLoaded', ()=>{
 function liveSearch(q) {
   const panel = document.getElementById('searchResults');
   if (!q || q.length < 2) { panel.style.display='none'; return; }
-  q = q.toLowerCase().trim();
+  const results = [];
   const db = state.db;
-  const has = (arr) => arr.some(v => (v || '').toString().toLowerCase().includes(q));
-  const groups = [];
-  const pushGroup = (label, items) => { if (items.length) groups.push({ label, items }); };
+  q = q.toLowerCase().trim();
 
-  pushGroup('Trucks', db.trucks.filter(t =>
-    has([t.reg, t.make, t.type, t.colour, t.vin, t.licencePlate, t.notes])
-  ).slice(0,6).map(t => ({
-    primary: `${t.reg} — ${t.make} (${t.year})`,
-    secondary: `${t.status.replace('_',' ')} · ${t.driver ? driverName(t.driver) : 'Unassigned'} · Fuel ${t.fuelPct}% · ${fmt(t.mileage)} km`,
-    fn: `showTruckDetail('${t.id}')`,
-  })));
 
-  pushGroup('Drivers', db.drivers.filter(d =>
-    has([d.name, d.phone, d.licence, d.idNo, d.location])
-  ).slice(0,6).map(d => ({
-    primary: d.name,
-    secondary: `${d.status.replace('_',' ')} · ${d.phone} · ${d.truckId ? truckName(d.truckId) : 'No truck'} · Lic ${d.licence}`,
-    fn: `showDriverDetail('${d.id}')`,
-  })));
-
-  const containerSet = new Set();
-  db.trips.forEach(t => { if ((t.container||'').toLowerCase().includes(q)) containerSet.add(t.container.toUpperCase()); });
-  db.shutouts.forEach(s => { if ((s.container||'').toLowerCase().includes(q)) containerSet.add(s.container.toUpperCase()); });
-  db.interchange.forEach(i => { if ((i.container||'').toLowerCase().includes(q)) containerSet.add(i.container.toUpperCase()); });
-  pushGroup('Containers', [...containerSet].slice(0,6).map(cont => {
+  const containerMatches = new Set();
+  db.trips.forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
+  db.shutouts.forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
+  db.interchange.forEach(i=>{ if ((i.container||'').toLowerCase().includes(q)) containerMatches.add(i.container.toUpperCase()); });
+  [...containerMatches].slice(0,3).forEach(cont=>{
     const live = findLiveTripByContainer(cont);
-    return {
-      primary: cont,
-      secondary: live ? `Active — ${live.status.replace('_',' ')} · ${live.origin} → ${live.dest}` : 'No active trip',
-      fn: `showContainerDetail('${cont}')`,
-    };
-  }));
+    results.push({ type:'Container', label:cont, sub: live ? `Active — ${live.status.replace('_',' ')}` : 'No active trip', fn: `showContainerDetail('${cont}')` });
+  });
 
-  pushGroup('Trips', db.trips.filter(t =>
-    has([t.ref, t.notes, t.workType, t.origin, t.dest, t.ctype])
-  ).slice(0,6).map(t => ({
-    primary: `${t.container} — ${t.origin} → ${t.dest}`,
-    secondary: `${t.status.replace('_',' ')} · ${t.workType} · Ref ${t.ref} · ${truckName(t.truckId)}`,
-    fn: `showTripDetail('${t.id}')`,
-  })));
-
-  pushGroup('Shipping Lines', db.shippingLines.filter(l =>
-    has([l.code, l.name, l.contact])
-  ).slice(0,4).map(l => ({
-    primary: `${l.code} — ${l.name}`,
-    secondary: `${l.active ? 'Active' : 'Inactive'} · ${l.contact||''}`,
-    fn: `showSection('shippinglines', document.querySelector('[data-section="shippinglines"]'))`,
-  })));
-
-  pushGroup('Maintenance', db.maintenance.filter(m =>
-    has([m.desc, m.tech, m.type]) || truckName(m.truckId).toLowerCase().includes(q)
-  ).slice(0,4).map(m => ({
-    primary: `${truckName(m.truckId)} — ${m.type}`,
-    secondary: `${m.status.replace('_',' ')} · ${(m.desc||'').slice(0,55)}`,
-    fn: `showMaintDetail('${m.id}')`,
-  })));
-
-  pushGroup('Fuel Logs', db.fuel.filter(f =>
-    has([f.station, f.receipt]) || truckName(f.truckId).toLowerCase().includes(q) || driverName(f.driverId).toLowerCase().includes(q)
-  ).slice(0,4).map(f => ({
-    primary: `${truckName(f.truckId)} — ${f.litres}L`,
-    secondary: `${f.station} · ${fmtDate(f.date)} · ${fmtKsh(f.litres*f.pricePerLitre)}`,
-    fn: `showSection('fuel', document.querySelector('[data-section="fuel"]'))`,
-  })));
-
-  pushGroup('Shutouts', db.shutouts.filter(s =>
-    has([s.vessel, s.voyage, s.reason, s.notes])
-  ).slice(0,4).map(s => ({
-    primary: s.container,
-    secondary: `${s.status} · ${s.vessel} · ${s.reason||''}`,
-    fn: `showContainerDetail('${s.container}')`,
-  })));
-
-  pushGroup('Interchange', db.interchange.filter(i =>
-    has([i.type, i.condition, i.notes])
-  ).slice(0,4).map(i => ({
-    primary: `${i.container} — ${i.type}`,
-    secondary: `${i.status} · ${i.condition}`,
-    fn: `showContainerDetail('${i.container}')`,
-  })));
-
-  pushGroup('Requisitions', db.requisitions.filter(r =>
-    has([r.items, r.category, r.requester, r.notes])
-  ).slice(0,4).map(r => ({
-    primary: `${r.category} — ${fmtKsh(r.amount)}`,
-    secondary: `${r.status} · ${r.requester}`,
-    fn: `showSection('requisitions', document.querySelector('[data-section="requisitions"]'))`,
-  })));
-
-  pushGroup('Workshop', db.workshop.filter(w =>
-    has([w.title, w.desc, w.tech]) || truckName(w.truckId).toLowerCase().includes(q)
-  ).slice(0,4).map(w => ({
-    primary: w.title,
-    secondary: `${truckName(w.truckId)} · ${w.status.replace('_',' ')}`,
-    fn: `showSection('workshop', document.querySelector('[data-section="workshop"]'))`,
-  })));
-
-  pushGroup('Invoices', db.invoices.filter(i =>
-    has([i.client, i.ref, i.notes])
-  ).slice(0,4).map(i => ({
-    primary: `${i.ref} — ${i.client}`,
-    secondary: `${i.status} · ${fmtKsh(i.total)}`,
-    fn: `showInvoiceDetail('${i.id}')`,
-  })));
-
-  if (isAdmin()) {
-    pushGroup('Users', db.profiles.filter(u =>
-      has([u.name, u.username, u.email])
-    ).slice(0,4).map(u => ({
-      primary: u.name,
-      secondary: `${roleLabel(u.role)} · ${u.username}`,
-      fn: `showUserDetail('${u.id}')`,
-    })));
-  }
-
-  panel.innerHTML = groups.length
-    ? groups.map(g => `
-      <div class="search-group-label">${g.label}</div>
-      ${g.items.map(it => `
-        <div class="search-result-item" onclick="${it.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''">
-          <span class="search-result-type">${g.label}</span>
-          <div><div style="font-size:12px;color:var(--text)">${it.primary}</div><div style="font-size:10px;color:var(--text-3)">${it.secondary}</div></div>
-        </div>`).join('')}
-    `).join('')
+  db.trucks.filter(t=>t.reg.toLowerCase().includes(q)||t.make.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+    results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:t.status, fn: `showTruckDetail('${t.id}')` });
+  });
+  db.drivers.filter(d=>d.name.toLowerCase().includes(q)||d.phone.includes(q)).slice(0,3).forEach(d=>{
+    results.push({ type:'Driver', label:d.name, sub:d.status, fn: `showDriverDetail('${d.id}')` });
+  });
+  db.trips.filter(t=>t.origin.toLowerCase().includes(q)||t.dest.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+    results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:t.status, fn: `showTripDetail('${t.id}')` });
+  });
+  db.invoices.filter(i=>i.client.toLowerCase().includes(q)||i.ref.toLowerCase().includes(q)).slice(0,2).forEach(i=>{
+    results.push({ type:'Invoice', label: `${i.ref} — ${i.client}`, sub:i.status, fn: `showInvoiceDetail('${i.id}')` });
+  });
+  panel.innerHTML = results.length
+    ? results.map(r=>`<div class="search-result-item" onclick="${r.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''"><span class="search-result-type">${r.type}</span><div><div style="font-size:12px;color:var(--text)">${r.label}</div><div style="font-size:10px;color:var(--text-3)">${r.sub}</div></div></div>`).join('')
     : `<div style="padding:12px 16px;font-size:11.5px;color:var(--text-3)">No results for "${q}"</div>`;
-  panel.style.display = 'block';
-  if (typeof appendDocSearchResults === 'function') appendDocSearchResults(q);
+  panel.style.display='block';
 }
 
 
@@ -4124,9 +4017,6 @@ function showContainerDetail(contRaw) {
   const actionsHtml = actions.length ? `<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Actions</div><div style="display:flex;gap:6px;flex-wrap:wrap">${actions.join('')}</div></div>` : '';
 
   openModal(`Container — ${cont}`, `${summary}${tripsHtml}${shutoutsHtml}${interchangeHtml}${actionsHtml}`);
-  const mb = document.getElementById('modalBody');
-  if (mb) mb.dataset.container = cont;
-  if (typeof appendContainerLinkedDocuments === 'function') appendContainerLinkedDocuments(cont);
 }
 
 function handleSearch(q) {
@@ -4308,7 +4198,7 @@ async function renderPublicBookings() {
       }
     }
     return `
-    <div data-booking-id="${b.id}" style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
+    <div style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
       <div><strong>${sanitize(b.full_name)}</strong> (${sanitize(b.email)})</div>
       <div>Service: ${sanitize(b.service_type)}</div>
 <div>Container: ${sanitize(b.container) || 'Not provided'}</div>
@@ -4330,7 +4220,6 @@ async function renderPublicBookings() {
     badge.textContent = pending || '';
     badge.style.display = pending ? 'inline' : 'none';
   }
-  if (typeof attachDocChipsToBookings === 'function') attachDocChipsToBookings();
 }
 
 
