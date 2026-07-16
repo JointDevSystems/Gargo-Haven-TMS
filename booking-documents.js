@@ -1,6 +1,4 @@
-use strict';
-
-
+'use strict';
 
 
 const DOC_TYPE_LABELS = {
@@ -353,7 +351,7 @@ async function deleteStorageZone(id) {
   renderStorageAvailability();
 }
 
-
+/* ── Wire into the core app without touching script.js ────────────── */
 sectionRenderers.docverification = renderDocVerification;
 SECTION_META.docverification = ['Operations', 'Document Verification'];
 
@@ -372,7 +370,8 @@ async function updateDocVerificationBadge() {
     badge.textContent = count || '';
     badge.style.display = count ? 'inline' : 'none';
   } catch (e) {
-
+    // Table probably isn't set up yet — fail silently rather than
+    // spamming the console every time badges refresh.
     badge.style.display = 'none';
   }
 }
