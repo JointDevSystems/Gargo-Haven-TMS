@@ -1010,7 +1010,8 @@ function buildBadges() {
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
   set('badge-publicbookings', db.publicBookings?.filter(b=>b.status==='pending').length || 0);
-  set('badge-docverification', db.documents?.filter(d=>d.status==='pending').length || 0);
+  set('badge-docverification', db.documents?.filter(d=>d.status==='pending').length || 0); 
+  updateDocVerificationBadge();
 }
 
 function buildAlerts() {
@@ -1046,6 +1047,7 @@ function buildAlerts() {
   }
   const dot=document.getElementById('alertDot');
   if(dot) dot.style.display=alerts.length?'block':'none';
+  appendPendingDocAlerts();
 }
 
 function toggleAlerts() {
@@ -1122,6 +1124,7 @@ const sectionRenderers = {
   dispatch: renderDispatch,
   publicbookings: renderPublicBookings,
   docverification: renderDocVerification,
+  docverification: () => renderDocVerification(),
   maintenance: () => renderMaint('all'),
   fuel: renderFuel,
   shutout: () => renderShutout('all'),
@@ -1221,6 +1224,7 @@ async function renderPublicBookings() {
     container.innerHTML = `<div class="empty-state">No ${_publicBookingFilter} bookings</div>`;
     return;
   }
+  attachDocChipsToBookings();
 
   container.innerHTML = data.map(b => {
     let importedAction = '';
