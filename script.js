@@ -1010,8 +1010,8 @@ function buildBadges() {
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
   set('badge-publicbookings', db.publicBookings?.filter(b=>b.status==='pending').length || 0);
-  set('badge-docverification', db.documents?.filter(d=>d.status==='pending').length || 0); 
-  updateDocVerificationBadge();
+  set('badge-docverification', db.documents?.filter(d=>d.status==='pending').length || 0);
+  if (typeof updateDocVerificationBadge === 'function') updateDocVerificationBadge();
 }
 
 function buildAlerts() {
@@ -1047,7 +1047,7 @@ function buildAlerts() {
   }
   const dot=document.getElementById('alertDot');
   if(dot) dot.style.display=alerts.length?'block':'none';
-  appendPendingDocAlerts();
+  if (typeof appendPendingDocAlerts === 'function') appendPendingDocAlerts();
 }
 
 function toggleAlerts() {
@@ -1123,7 +1123,6 @@ const sectionRenderers = {
   trips: () => renderTrips('active'),
   dispatch: renderDispatch,
   publicbookings: renderPublicBookings,
-  docverification: renderDocVerification,
   docverification: () => renderDocVerification(),
   maintenance: () => renderMaint('all'),
   fuel: renderFuel,
@@ -1141,56 +1140,6 @@ const sectionRenderers = {
   usermgmt: renderUserMgmt,
   settings: renderSettings,
 };
-
-// ============================================================
-//  MISSING FUNCTIONS - DOCUMENT VERIFICATION
-// ============================================================
-
-function renderDocVerification() {
-  const container = document.getElementById('sec-docverification');
-  if (!container) return;
-  container.innerHTML = `
-    <div class="panel">
-      <div class="panel-head"><span class="panel-title">Document Verification</span></div>
-      <div style="padding:20px;text-align:center;color:var(--text-3);">
-        <div style="font-size:48px;margin-bottom:12px;">📄</div>
-        <div style="font-size:14px;font-weight:600;color:var(--text);">Document Management</div>
-        <div style="font-size:12px;margin-top:8px;">Upload and verify driver documents, vehicle papers, and container manifests.</div>
-        <button class="submit-btn" style="margin-top:16px;" onclick="toast('Document upload feature coming soon', 'info')">Upload Document →</button>
-      </div>
-    </div>
-  `;
-}
-
-function updateDocVerificationBadge() {
-  const badge = document.getElementById('badge-docverification');
-  if (badge) {
-    const pending = state.db.documents?.filter(d => d.status === 'pending').length || 0;
-    badge.textContent = pending || '';
-    badge.style.display = pending ? 'inline' : 'none';
-  }
-}
-
-function appendPendingDocAlerts() {}
-
-function appendTripLinkedDocuments(tripId) {}
-
-function appendContainerLinkedDocuments(container) {}
-
-function appendDocSearchResults(query) {}
-
-function renderDocumentsReportTab(container) {
-  if (!container) return;
-  container.innerHTML = `
-    <div class="report-block">
-      <h3>Document Reports</h3>
-      <div style="padding:16px;color:var(--text-3);text-align:center;">
-        <div style="font-size:32px;margin-bottom:8px;">📊</div>
-        <div>Document reports will be available in a future update.</div>
-      </div>
-    </div>
-  `;
-}
 
 // ============================================================
 //  PUBLIC BOOKINGS
@@ -1224,7 +1173,6 @@ async function renderPublicBookings() {
     container.innerHTML = `<div class="empty-state">No ${_publicBookingFilter} bookings</div>`;
     return;
   }
-  attachDocChipsToBookings();
 
   container.innerHTML = data.map(b => {
     let importedAction = '';
@@ -1259,6 +1207,8 @@ async function renderPublicBookings() {
     badge.textContent = pending || '';
     badge.style.display = pending ? 'inline' : 'none';
   }
+
+  if (typeof attachDocChipsToBookings === 'function') attachDocChipsToBookings();
 }
 
 function findTripByBookingId(bookingId) {
