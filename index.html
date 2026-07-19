@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gargo · Fleet Operations</title>
 
-    
+
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#06080F" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -253,10 +253,10 @@
                         Public Bookings
                       <span class="nav-badge" id="badge-publicbookings"></span>
                     </button>
-                    <button class="nav-item" onclick="showSection('docverification',this)" data-section="docverification">
+                    <button class="nav-item" onclick="showSection('depops',this)" data-section="depops">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-                        Document Verification
-                      <span class="nav-badge" id="badge-docverification"></span>
+                        DepOps
+                      <span class="nav-badge" id="badge-depops"></span>
                     </button>
                     <button class="nav-item" onclick="showSection('maintenance',this)" data-section="maintenance">
                         <svg class="nav-icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
@@ -845,7 +845,6 @@
                                 <button class="filter-btn" onclick="renderReport('maintenance',this)">Maintenance</button>
                                 <button class="filter-btn" onclick="renderReport('fuel',this)">Fuel</button>
                                 <button class="filter-btn" onclick="requireFinanceReport('revenue',this)">Revenue 🔒</button>
-                                <button class="filter-btn" onclick="renderReport('documents',this)">Documents</button>
                             </div>
                         </div>
                         <div id="reportContent"></div>
@@ -1082,27 +1081,69 @@
   <div id="publicBookingsList"></div>
 </section>
 
-<!-- DOCUMENT VERIFICATION -->
-<section class="section" id="sec-docverification">
+<!-- DEPOPS -->
+<section class="section" id="sec-depops">
   <div class="sec-toolbar">
-    <div class="sec-title">Document Verification</div>
-    <div class="filter-row">
-      <button class="filter-btn active" onclick="filterDocVerification('pending_review',this)">Pending Review</button>
-      <button class="filter-btn" onclick="filterDocVerification('verified',this)">Verified</button>
-      <button class="filter-btn" onclick="filterDocVerification('rejected',this)">Rejected</button>
-      <button class="filter-btn" onclick="filterDocVerification('all',this)">All</button>
-      <button class="action-btn" onclick="renderDocVerification()">↻ Refresh</button>
-    </div>
+    <div class="sec-title">DepOps</div>
   </div>
   <div class="ops-notice" style="margin-bottom:14px">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
-    Guarantee forms, release orders, and delivery orders uploaded by clearers/forwarders/transporters against a booking reference. Verify before storage space is allocated.
+    Document review and depot storage for both inbound bookings and outbound/repatriation containers. Verifying or rejecting a document here updates the same record the staff portal uses — either place reflects instantly.
   </div>
+
   <div class="panel" style="margin-bottom:14px">
     <div class="panel-head"><span class="panel-title">Depot Storage Availability</span></div>
-    <div id="storageAvailabilityList" style="padding:12px"></div>
+    <div id="depopsZones" style="padding:12px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
   </div>
-  <div id="docVerificationList"></div>
+
+  <div class="panel" style="margin-bottom:14px">
+    <div class="panel-head"><span class="panel-title">Containers Currently in Storage</span></div>
+    <div id="depopsStorageList" style="padding:12px"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+  </div>
+
+  <div class="filter-row" style="margin-bottom:16px">
+    <button class="filter-btn active depops-tab-btn" onclick="switchDepOpsTab('inbound',this)">Inbound</button>
+    <button class="filter-btn depops-tab-btn" onclick="switchDepOpsTab('outbound',this)">Outbound / Repatriation</button>
+  </div>
+
+  <div class="depops-tab-panel active" id="depopsPanel-inbound">
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Verified — Ready to Process</div>
+    <div id="depopsReadyList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+
+    <div class="sec-toolbar" style="margin-top:22px">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:0">Document Review</div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="filterDepOpsInbound('pending_review',this)">Pending Review</button>
+        <button class="filter-btn" onclick="filterDepOpsInbound('verified',this)">Verified</button>
+        <button class="filter-btn" onclick="filterDepOpsInbound('rejected',this)">Rejected</button>
+        <button class="filter-btn" onclick="filterDepOpsInbound('all',this)">All</button>
+        <button class="action-btn ghost" onclick="renderDepOpsInbound()">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="depopsInboundQueue"></div>
+  </div>
+
+  <div class="depops-tab-panel" id="depopsPanel-outbound">
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Eligible for Repatriation</div>
+    <div id="depopsEligibleList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+
+    <div id="depopsManualForm" style="margin-top:14px"></div>
+
+    <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:18px 0 10px">Outbound Trips</div>
+    <div id="depopsOutboundTripsList"><div class="empty-state"><div class="empty-state-label">Loading…</div></div></div>
+
+    <div class="sec-toolbar" style="margin-top:22px">
+      <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin:0">Release Order Review</div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="filterDepOpsOutbound('pending_review',this)">Pending Review</button>
+        <button class="filter-btn" onclick="filterDepOpsOutbound('verified',this)">Verified</button>
+        <button class="filter-btn" onclick="filterDepOpsOutbound('rejected',this)">Rejected</button>
+        <button class="filter-btn" onclick="filterDepOpsOutbound('all',this)">All</button>
+        <button class="action-btn ghost" onclick="renderDepOpsOutbound()">↻ Refresh</button>
+      </div>
+    </div>
+    <div id="depopsOutboundQueue"></div>
+  </div>
 </section>
 
                 </div>
