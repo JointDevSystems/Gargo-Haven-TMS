@@ -1,11 +1,12 @@
 'use strict';
 
-
 const IDLE_TIMEOUT  = 15 * 60 * 1000;
 
 const SUPABASE_URL = 'https://okisjizcyidvvwdwehaa.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9raXNqaXpjeWlkdnZ3ZHdlaGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MTYzNjMsImV4cCI6MjA5ODM5MjM2M30.O_0EeK297a07B7FLunpWr6HDlqrfP5Z8Owyp3qE4hQE';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+window.ghSupabase = supabase;
 
 let state = {
   currentUser       : null,
@@ -177,8 +178,8 @@ function truckFromRow(r){ return { id:r.id, reg:r.reg, make:r.make, type:r.type,
 function driverToRow(d)  { return { id:d.id, name:d.name, phone:d.phone, licence:d.licence, licence_exp:d.licenceExp, status:d.status, truck_id:d.truckId||null, trips_today:d.tripsToday, current_load:d.load, location:d.location, id_no:d.idNo, rating:d.rating, profile_id:d.profileId||null }; }
 function driverFromRow(r){ return { id:r.id, name:r.name, phone:r.phone, licence:r.licence, licenceExp:r.licence_exp, status:r.status, truckId:r.truck_id, tripsToday:r.trips_today, load:r.current_load, location:r.location, idNo:r.id_no, rating:r.rating, profileId:r.profile_id||null }; }
 
-function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null }; }
-function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null }; }
+function tripToRow(t)  { return { id:t.id, truck_id:t.truckId||null, driver_id:t.driverId||null, container:t.container, container_type:t.ctype, work_type:t.workType, origin:t.origin, destination:t.dest, shipping_line_id:t.shippingLine||null, status:t.status, start_time:t.startTime, eta:t.eta, distance:t.distance, priority:t.priority, notes:t.notes, reference:t.ref, container_images:JSON.stringify(t.containerImages||[]), booking_id:t.bookingId||null, storage_zone_id:t.storageZoneId||null, storage_teu:t.storageTeu||null, storage_released:!!t.storageReleased }; }
+function tripFromRow(r){ let imgs=[]; try{ imgs = r.container_images ? JSON.parse(r.container_images) : []; }catch(e){ imgs=[]; } return { id:r.id, truckId:r.truck_id, driverId:r.driver_id, container:r.container, ctype:r.container_type, workType:r.work_type, origin:r.origin, dest:r.destination, shippingLine:r.shipping_line_id, status:r.status, startTime:r.start_time, eta:r.eta, distance:r.distance, priority:r.priority, notes:r.notes, ref:r.reference, containerImages:imgs, bookingId:r.booking_id||null, storageZoneId:r.storage_zone_id||null, storageTeu:r.storage_teu||null, storageReleased:!!r.storage_released }; }
 
 function maintToRow(m)  { return { id:m.id, truck_id:m.truckId||null, type:m.type, description:m.desc, priority:m.priority, status:m.status, date:m.date, cost:m.cost, technician:m.tech, resolved_date:m.resolvedDate }; }
 function maintFromRow(r){ return { id:r.id, truckId:r.truck_id, type:r.type, desc:r.description, priority:r.priority, status:r.status, date:r.date, cost:r.cost, tech:r.technician, resolvedDate:r.resolved_date }; }
@@ -585,10 +586,10 @@ function findLineByCode(code, excludeId) {
 
 
 const ROLE_SIDEBAR = {
-  admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','docverification','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
-  clerk:    ['trucks','drivers','trips','dispatch','publicbookings','shutout','interchange'],
-  dispatch: ['trucks','drivers','trips','dispatch','publicbookings','shutout','interchange','fuel'],
-  ops:      ['trucks','drivers','trips','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  admin:    ['dashboard','trucks','drivers','trips','dispatch','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
+  clerk:    ['trucks','drivers','trips','dispatch','publicbookings','depops','shutout','interchange'],
+  dispatch: ['trucks','drivers','trips','dispatch','publicbookings','depops','shutout','interchange','fuel'],
+  ops:      ['trucks','drivers','trips','dispatch','publicbookings','depops','maintenance','fuel','shutout','interchange','shippinglines','requisitions','workshop'],
   finance:  ['trips','shippinglines'],
   viewer:   ['trucks','drivers','trips'],
 };
@@ -1009,9 +1010,6 @@ function buildBadges() {
   set('badge-interchange',  db.interchange.filter(i=>i.status==='pending').length);
   set('badge-requisitions', db.requisitions.filter(r=>r.status==='pending').length);
   set('badge-invoices',     db.invoices.filter(i=>i.status==='overdue').length);
-  set('badge-publicbookings', db.publicBookings?.filter(b=>b.status==='pending').length || 0);
-  set('badge-docverification', db.documents?.filter(d=>d.status==='pending').length || 0);
-  if (typeof updateDocVerificationBadge === 'function') updateDocVerificationBadge();
 }
 
 function buildAlerts() {
@@ -1047,7 +1045,6 @@ function buildAlerts() {
   }
   const dot=document.getElementById('alertDot');
   if(dot) dot.style.display=alerts.length?'block':'none';
-  if (typeof appendPendingDocAlerts === 'function') appendPendingDocAlerts();
 }
 
 function toggleAlerts() {
@@ -1062,7 +1059,7 @@ const SECTION_META = {
   dashboard:['Operations','Dashboard'], trucks:['Fleet Management','Trucks'], drivers:['Fleet Management','Drivers'],
   trips:['Fleet Management','Active Trips'], dispatch:['Operations','Dispatch Console'],
   publicbookings: ['Operations', 'Public Bookings'],
-  docverification: ['Operations', 'Document Verification'],
+  depops: ['Operations', 'DepOps'],
   maintenance:['Operations','Maintenance Log'], fuel:['Operations','Fuel Log'],
   shutout:['Container Ops','Shutout'], interchange:['Container Ops','Interchange'],
   shippinglines:['Container Ops','Shipping Lines'], requisitions:['Compliance','Requisitions'],
@@ -1071,6 +1068,7 @@ const SECTION_META = {
   reports:['Intelligence','Reports'], tripreports:['Intelligence','Trip Reports & Audit Centre'],
   livetracking:['Platform','Live Tracking'],
   usermgmt:['Platform','User Management'], settings:['Platform','Settings'],
+  
 };
 
 function showSection(sec, btn) {
@@ -1112,181 +1110,21 @@ function renderSection(sec) {
   if(fn) fn();
 }
 
-// ============================================================
-//  SECTION RENDERERS - COMPLETE WITH ALL REQUIRED FUNCTIONS
-// ============================================================
-
 const sectionRenderers = {
-  dashboard: renderDashboard,
-  trucks: () => renderTrucks('all'),
-  drivers: () => renderDrivers('all'),
-  trips: () => renderTrips('active'),
-  dispatch: renderDispatch,
+  dashboard:renderDashboard, trucks:()=>renderTrucks('all'), drivers:()=>renderDrivers('all'),
+  trips:()=>renderTrips('active'), dispatch:renderDispatch, maintenance:()=>renderMaint('all'),
+  fuel:renderFuel, shutout:()=>renderShutout('all'), interchange:()=>renderInterchange('all'),
+  shippinglines:()=>renderLines('all'), requisitions:()=>renderRequisitions('all'),
+  workshop:()=>renderWorkshop('all'), invoicing:()=>renderInvoicing('all'),
+  allocation:()=>renderAllocation('auto'), workanalysis:()=>renderWorkAnalysis('all'),
+  reports:()=>renderReport('overview'), tripreports:trcInit, livetracking:initTrackingSection,
+  usermgmt:renderUserMgmt, settings:renderSettings,
   publicbookings: renderPublicBookings,
-  docverification: () => renderDocVerification(),
-  maintenance: () => renderMaint('all'),
-  fuel: renderFuel,
-  shutout: () => renderShutout('all'),
-  interchange: () => renderInterchange('all'),
-  shippinglines: () => renderLines('all'),
-  requisitions: () => renderRequisitions('all'),
-  workshop: () => renderWorkshop('all'),
-  invoicing: () => renderInvoicing('all'),
-  allocation: () => renderAllocation('auto'),
-  workanalysis: () => renderWorkAnalysis('all'),
-  reports: () => renderReport('overview'),
-  tripreports: trcInit,
-  livetracking: initTrackingSection,
-  usermgmt: renderUserMgmt,
-  settings: renderSettings,
+  depops: renderDepOps,
 };
 
-// ============================================================
-//  PUBLIC BOOKINGS
-// ============================================================
+function toggleSidebar() { document.body.classList.toggle('sidebar-open'); }
 
-let _publicBookingFilter = 'pending';
-
-function filterPublicBookings(filter, btn) {
-  _publicBookingFilter = filter;
-  document.querySelectorAll('#sec-publicbookings .filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  renderPublicBookings();
-}
-
-async function renderPublicBookings() {
-  const container = document.getElementById('publicBookingsList');
-  if (!container) return;
-
-  let query = supabase.from('public_bookings').select('*');
-  if (_publicBookingFilter !== 'all') {
-    query = query.eq('status', _publicBookingFilter);
-  }
-  const { data, error } = await query.order('created_at', { ascending: false });
-
-  if (error) {
-    container.innerHTML = `<div class="empty-state">Error: ${error.message}</div>`;
-    return;
-  }
-
-  if (!data || data.length === 0) {
-    container.innerHTML = `<div class="empty-state">No ${_publicBookingFilter} bookings</div>`;
-    return;
-  }
-
-  container.innerHTML = data.map(b => {
-    let importedAction = '';
-    if (b.status === 'imported') {
-      const trip = findTripByBookingId(b.id);
-      if (trip && (!trip.truckId || !trip.driverId)) {
-        importedAction = `<button class="modal-btn primary" onclick="jumpToCompleteDispatch('${trip.id}')">Complete Dispatch →</button>`;
-      } else if (trip) {
-        importedAction = `<button class="modal-btn ghost" onclick="showTripDetail('${trip.id}')">View Trip</button>`;
-      }
-    }
-    return `
-    <div data-booking-id="${b.id}" style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
-      <div><strong>${sanitize(b.full_name)}</strong> (${sanitize(b.email)})</div>
-      <div>Service: ${sanitize(b.service_type)}</div>
-<div>Container: ${sanitize(b.container) || 'Not provided'}</div>
-<div style="font-size:10px;color:var(--text-3);">Booking ID: ${b.id.slice(0,8)}</div>
-      <div>Pickup: ${sanitize(b.pickup_location)} → Drop: ${sanitize(b.dropoff_location)}</div>
-      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <span class="sbadge s-${b.status}">${b.status}</span>
-        ${b.status === 'pending' ? `<button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">Import to Fleet</button>` : ''}
-        ${importedAction}
-        <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
-      </div>
-    </div>
-  `; }).join('');
-
-  // Update badge
-  const badge = document.getElementById('badge-publicbookings');
-  if (badge) {
-    const pending = data.filter(b => b.status === 'pending').length;
-    badge.textContent = pending || '';
-    badge.style.display = pending ? 'inline' : 'none';
-  }
-
-  if (typeof attachDocChipsToBookings === 'function') attachDocChipsToBookings();
-}
-
-function findTripByBookingId(bookingId) {
-  return state.db.trips.find(t => t.bookingId === bookingId);
-}
-
-async function importPublicBooking(bookingId) {
-  if (!confirm('Import this booking?')) return;
-  const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
-  if (error || !booking) { toast('Booking not found', 'error'); return; }
-  if (booking.status !== 'pending') { toast('Already processed', 'warning'); return; }
-
-  const rawCont = (booking.container || '').trim().toUpperCase();
-  if (rawCont) {
-    if (!isValidContainerFormat(rawCont)) { toast(`Booking has an invalid container number (${rawCont}) — fix it before importing`, 'error'); return; }
-    const dupTrip = findLiveTripByContainer(rawCont);
-    if (dupTrip) { toast(`${rawCont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}). Resolve that trip first, or correct the container number on this booking.`, 'error'); return; }
-  }
-
-  const { data: updatedRows, error: updateErr } = await supabase
-    .from('public_bookings')
-    .update({ status: 'imported' })
-    .eq('id', bookingId)
-    .eq('status', 'pending') 
-    .select();
-
-  if (updateErr) {
-    toast(`Import failed — could not update booking status (${updateErr.message}). No trip was created.`, 'error');
-    return;
-  }
-  if (!updatedRows || updatedRows.length === 0) {
-    toast('Import failed — booking was already processed by someone else. Refresh and check.', 'warning');
-    renderPublicBookings();
-    return;
-  }
-
-  const trip = {
-    id: uid('TRIP'),
-    container: rawCont || `PUB-${booking.id.slice(0,8)}`,
-    ctype: booking.cargo_type || '20ft Dry',
-    workType: booking.service_type || 'Other',
-    origin: booking.pickup_location || '—',
-    dest: booking.dropoff_location || '—',
-    shippingLine: null,
-    status: 'active',
-    startTime: new Date().toISOString(),
-    eta: new Date(Date.now() + 4*3600000).toISOString(),
-    distance: 0,
-    priority: 'Normal',
-    notes: `Imported from public booking #${booking.id}`,
-    ref: `PUB-${booking.id.slice(0,8)}`,
-    truckId: null,
-    driverId: null,
-    containerImages: [],
-    bookingId: booking.id,
-  };
-  state.db.trips.push(trip);
-  scheduleSave();
-
-  toast('Imported — awaiting dispatch (trip ' + trip.id.slice(-6) + ')', 'success');
-  renderPublicBookings();
-  refreshAwaitingDispatchUI();
-}
-
-async function showPublicBookingDetail(id) {
-  const { data: b, error } = await supabase.from('public_bookings').select('*').eq('id', id).single();
-  if (error || !b) { toast('Not found', 'error'); return; }
-  openModal('Booking Detail', `<pre>${JSON.stringify(b, null, 2)}</pre>`);
-}
-
-async function refreshPublicBookings() {
-  toast('Refreshing...', 'info');
-  await renderPublicBookings();
-}
-
-// ============================================================
-//  DASHBOARD
-// ============================================================
 
 function renderDashboard() {
   const db=state.db;
@@ -1527,10 +1365,8 @@ function showTripDetail(id) {
     ? `<div style="margin-bottom:14px"><div class="fg" style="margin:0 0 6px"><label>Container Photos (${t.containerImages.length})</label></div><div class="container-img-grid">${t.containerImages.map(src=>`<div class="container-img-thumb view-only"><img src="${src}" onclick="window.open('${src}','_blank')" /></div>`).join('')}</div></div>`
     : '';
   openModal(`Trip — ${t.container}`, `${needsDispatch ? `<div class="ops-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><span>This trip is awaiting a truck/driver assignment.</span><button class="modal-btn primary" onclick="closeModal();jumpToCompleteDispatch('${t.id}')">Complete in Dispatch →</button></div>` : ''}${gallery}<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div class="fg" style="margin:0"><label>Container</label><div class="mono" style="color:var(--gold);font-size:13px">${t.container}</div></div><div class="fg" style="margin:0"><label>Type</label><div style="font-size:12px;color:var(--text)">${t.ctype}</div></div><div class="fg" style="margin:0"><label>Truck</label><div style="font-size:12px;color:var(--text)">${truckName(t.truckId)}</div></div><div class="fg" style="margin:0"><label>Driver</label><div style="font-size:12px;color:var(--text)">${driverName(t.driverId)}</div></div><div class="fg" style="margin:0"><label>Origin</label><div style="font-size:12px;color:var(--text)">${t.origin}</div></div><div class="fg" style="margin:0"><label>Destination</label><div style="font-size:12px;color:var(--text)">${t.dest}</div></div><div class="fg" style="margin:0"><label>Work Type</label><div style="font-size:12px;color:var(--text)">${t.workType}</div></div><div class="fg" style="margin:0"><label>Distance</label><div style="font-size:12px;color:var(--text)">${t.distance} km</div></div><div class="fg" style="margin:0"><label>Started</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.startTime)}</div></div><div class="fg" style="margin:0"><label>ETA</label><div style="font-size:12px;color:var(--text)">${fmtTime(t.eta)}</div></div><div class="fg" style="margin:0"><label>Shipping Line</label><div style="font-size:12px;color:var(--text)">${line?line.name:'—'}</div></div><div class="fg" style="margin:0"><label>Priority</label><div>${sbadge(t.priority.toLowerCase())}</div></div><div class="fg" style="margin:0"><label>Reference</label><div class="mono" style="font-size:11px;color:var(--text-2)">${t.ref}</div></div><div class="fg" style="margin:0"><label>Status</label><div>${sbadge(t.status)}</div></div></div>${t.notes?`<div class="ops-notice">${t.notes}</div>`:''}${canUpdateTripStatus(t)?`<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:10px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Trip Step Update ${t.status==='completed'?'— trip complete, no further changes':'(forward only)'}</div><div style="display:flex;gap:6px;flex-wrap:wrap">${nextTripStatuses(t.status).length ? nextTripStatuses(t.status).map(s=>`<button class="filter-btn" onclick="quickSetTripStatus('${id}','${s}')">${s.replace('_',' ')}</button>`).join('') : '<span style="font-size:11px;color:var(--text-3)">No further status changes available</span>'}</div>${isAdmin()?adminDeleteBtn('trips', id):''}</div>`:''}`);
-  const mb = document.getElementById('modalBody');
-  if (mb) mb.dataset.tripId = id;
-  appendTripLinkedDocuments(id);
 }
+
 
 const TRIP_STATUS_RANK = { active:0, loaded:1, on_trip:2, delayed:2, breakdown:2, offloaded:3, completed:4 };
 const TRIP_ALL_STATUSES = Object.keys(TRIP_STATUS_RANK);
@@ -1592,6 +1428,11 @@ async function applyTripStatus(t, status, actorLabel) {
     if (driver) { driver.load = null; driver.tripsToday++; driverChanged = true; }
   }
 
+  // Only write truck/driver rows when this status change actually touches
+  // them. Rewriting untouched rows on every trip step widens the failure
+  // surface for no reason — if that write is rejected (e.g. by an RLS
+  // policy or a stricter role permission on those tables) the whole trip
+  // update was rolled back even though the trip itself was fine.
   try {
     const writes = [ supabase.from('trips').update(tripToRow(t)).eq('id', t.id) ];
     if (truck  && truckChanged)  writes.push(supabase.from('trucks').update(truckToRow(truck)).eq('id', truck.id));
@@ -1620,6 +1461,18 @@ async function applyTripStatus(t, status, actorLabel) {
   if (status === 'breakdown') buildAlerts();
   buildBadges();
   addAudit(actorLabel, 'Trip Status Update', `${t.container} ${old} → ${status}`);
+
+
+  if (status === 'completed' && t.storageZoneId && !t.storageReleased) {
+    try {
+      const res = await window.bookingDocs.releaseStorageForTrip(t.id);
+      if (res && res.released) t.storageReleased = true;
+    } catch (e) {
+      console.error('Depot storage release failed:', e && e.message, e);
+      toast(`Trip completed, but couldn't auto-release depot storage — release it manually from DepOps (${(e && e.message) || 'error'})`, 'warning', 6000);
+    }
+  }
+
   return { ok:true, old, status };
 }
 
@@ -1832,7 +1685,7 @@ function startDriverTracking() {
   if (!driverShouldTrack(driver)) { stopDriverTracking(); return; }
   if (state.geoWatchId != null) return; // already running
   if (!navigator.geolocation) { toast('This device does not support GPS location', 'error'); return; }
-  if (state.geoPermission === 'denied') { renderDutyBar(); return; }
+  if (state.geoPermission === 'denied') { renderDutyBar(); return; } // don't spam the prompt if already blocked
   state.geoWatchId = navigator.geolocation.watchPosition(onDriverPosition, onDriverGeoError, {
     enableHighAccuracy: true, maximumAge: 5000, timeout: 20000,
   });
@@ -2359,7 +2212,7 @@ function cancelDispatchEdit() {
   toast('Dispatch form cleared', 'info');
 }
 
-function createDispatch() {
+async function createDispatch() {
   const truck  = document.getElementById('d_truck').value;
   const driver = document.getElementById('d_driver').value;
   const cont   = document.getElementById('d_container').value.trim().toUpperCase();
@@ -2403,6 +2256,24 @@ function createDispatch() {
 
     const t = state.db.trips.find(tr=>tr.id===editingId);
     if (!t) { toast('That trip no longer exists — it may have been removed.', 'error'); cancelDispatchEdit(); return; }
+
+    // Depot -> Port containers can't be dispatched without a verified
+    // release order on file for this trip — enforced here so it can't be
+    // bypassed by completing dispatch straight from the Dispatch Console.
+    if (workType === 'Depot → Port') {
+      try {
+        const docs = await window.bookingDocs.documentsForTrip(t.id);
+        const hasVerifiedRelease = docs.some(d => d.doc_type === 'release_order' && d.status === 'verified');
+        if (!hasVerifiedRelease) {
+          toast('A verified release order is required before this container can be dispatched to port. Upload it from DepOps → Outbound / Repatriation.', 'error', 6000);
+          return;
+        }
+      } catch (e) {
+        toast(`Could not confirm release order status (${(e && e.message) || 'error'}) — dispatch blocked until this can be checked.`, 'error', 6000);
+        return;
+      }
+    }
+
     Object.assign(t, { truckId: truck, driverId: driver, container: cont, ctype, workType, origin, dest, shippingLine: line, distance: dist, priority, notes, ref, containerImages: images });
     const tk = state.db.trucks.find(tr=>tr.id===truck);
     const dv = state.db.drivers.find(d=>d.id===driver);
@@ -3256,8 +3127,6 @@ function renderReport(tab, btn) {
     if (!state.financeUnlocked) { openFinanceLock(()=>renderReport('revenue')); return; }
     const inv=db.invoices;
     out.innerHTML=`<div class="report-block"><h3>Revenue Report — CONFIDENTIAL</h3>${reportRow('Total Invoiced',fmtKsh(inv.reduce((s,i)=>s+i.total,0)))}${reportRow('Collected',fmtKsh(inv.reduce((s,i)=>s+i.paid,0)))}${reportRow('Outstanding',fmtKsh(inv.reduce((s,i)=>s+(i.total-i.paid),0)))}${reportRow('Overdue',fmtKsh(inv.filter(i=>i.status==='overdue').reduce((s,i)=>s+i.total,0)))}</div>`;
-  } else if(tab==='documents'){
-    renderDocumentsReportTab(out);
   }
 }
 
@@ -3267,6 +3136,9 @@ function reportRow(label, val) {
 
 /* ──────────────────────────────────────────────────────────────────
    § 24b  TRIP REPORTS & AUDIT CENTRE  (Admin only)
+   Every report/query here hits the live database rather than the cached
+   in-memory state.db, so results always reflect the current server
+   data — including anything written by other sessions/devices.
 ────────────────────────────────────────────────────────────────── */
 const trc = { tripRows: [], auditRows: [], period: 'hourly', auditPeriod: 'today' };
 
@@ -3329,7 +3201,7 @@ function trcLocalInputValue(d) { return `${d.getFullYear()}-${trcPad(d.getMonth(
 function trcSetPeriod(period, btn) {
   if (btn) { document.querySelectorAll('#trcTab-trips .trc-period-row .filter-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
   trc.period = period;
-  if (period === 'custom') return;
+  if (period === 'custom') return; // leave from/to as-is for manual editing
   const now = new Date();
   let from;
   if (period === 'hourly')       from = new Date(now.getTime() - 3600000);
@@ -3350,7 +3222,7 @@ function trcSetAuditPeriod(period, btn) {
   if (period === 'today')      { from = new Date(now); from.setHours(0,0,0,0); }
   else if (period === 'week')  { from = new Date(now); const day=(from.getDay()+6)%7; from.setDate(from.getDate()-day); from.setHours(0,0,0,0); }
   else if (period === 'month') from = new Date(now.getFullYear(), now.getMonth(), 1);
-  else from = new Date(2000,0,1);
+  else from = new Date(2000,0,1); // 'all'
   document.getElementById('trcAuditFrom').value = trcLocalInputValue(from);
   document.getElementById('trcAuditTo').value   = trcLocalInputValue(now);
 }
@@ -3641,6 +3513,8 @@ function subscribeLiveSync() {
     channel = channel.on(
       'postgres_changes', { event: '*', schema: 'public', table: t },
       () => {
+        // Debounced — a bulk import touching many rows triggers one
+        // refresh, not one per row.
         clearTimeout(_liveSyncDebounce);
         _liveSyncDebounce = setTimeout(refreshFromServer, 700);
       }
@@ -3689,7 +3563,7 @@ function initTrackingMap() {
     }
     canvas.innerHTML = '';
     state.trackingMap = L.map(canvas, {
-      center: [-4.0435, 39.6682],
+      center: [-4.0435, 39.6682], // Mombasa
       zoom: 12,
     });
 
@@ -3883,6 +3757,8 @@ function importData(e) {
     try {
       const data = JSON.parse(ev.target.result);
       if (!data.trucks || !data.drivers) throw new Error('Invalid format');
+      // Older exports may carry legacy short ids (e.g. 'TRK001') from
+      // pre-migration backups — those aren't valid uuids, so remap them.
       const isUuid = s => typeof s === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
       const looksLegacy = data.trucks.length && !isUuid(data.trucks[0].id);
       state.db = looksLegacy ? remapSeedIds(data) : data;
@@ -4096,135 +3972,36 @@ document.addEventListener('DOMContentLoaded', ()=>{
 function liveSearch(q) {
   const panel = document.getElementById('searchResults');
   if (!q || q.length < 2) { panel.style.display='none'; return; }
-  q = q.toLowerCase().trim();
+  const results = [];
   const db = state.db;
-  const has = (arr) => arr.some(v => (v || '').toString().toLowerCase().includes(q));
-  const groups = [];
-  const pushGroup = (label, items) => { if (items.length) groups.push({ label, items }); };
+  q = q.toLowerCase().trim();
 
-  pushGroup('Trucks', db.trucks.filter(t =>
-    has([t.reg, t.make, t.type, t.colour, t.vin, t.licencePlate, t.notes])
-  ).slice(0,6).map(t => ({
-    primary: `${t.reg} — ${t.make} (${t.year})`,
-    secondary: `${t.status.replace('_',' ')} · ${t.driver ? driverName(t.driver) : 'Unassigned'} · Fuel ${t.fuelPct}% · ${fmt(t.mileage)} km`,
-    fn: `showTruckDetail('${t.id}')`,
-  })));
 
-  pushGroup('Drivers', db.drivers.filter(d =>
-    has([d.name, d.phone, d.licence, d.idNo, d.location])
-  ).slice(0,6).map(d => ({
-    primary: d.name,
-    secondary: `${d.status.replace('_',' ')} · ${d.phone} · ${d.truckId ? truckName(d.truckId) : 'No truck'} · Lic ${d.licence}`,
-    fn: `showDriverDetail('${d.id}')`,
-  })));
-
-  const containerSet = new Set();
-  db.trips.forEach(t => { if ((t.container||'').toLowerCase().includes(q)) containerSet.add(t.container.toUpperCase()); });
-  db.shutouts.forEach(s => { if ((s.container||'').toLowerCase().includes(q)) containerSet.add(s.container.toUpperCase()); });
-  db.interchange.forEach(i => { if ((i.container||'').toLowerCase().includes(q)) containerSet.add(i.container.toUpperCase()); });
-  pushGroup('Containers', [...containerSet].slice(0,6).map(cont => {
+  const containerMatches = new Set();
+  db.trips.forEach(t=>{ if ((t.container||'').toLowerCase().includes(q)) containerMatches.add(t.container.toUpperCase()); });
+  db.shutouts.forEach(s=>{ if ((s.container||'').toLowerCase().includes(q)) containerMatches.add(s.container.toUpperCase()); });
+  db.interchange.forEach(i=>{ if ((i.container||'').toLowerCase().includes(q)) containerMatches.add(i.container.toUpperCase()); });
+  [...containerMatches].slice(0,3).forEach(cont=>{
     const live = findLiveTripByContainer(cont);
-    return {
-      primary: cont,
-      secondary: live ? `Active — ${live.status.replace('_',' ')} · ${live.origin} → ${live.dest}` : 'No active trip',
-      fn: `showContainerDetail('${cont}')`,
-    };
-  }));
+    results.push({ type:'Container', label:cont, sub: live ? `Active — ${live.status.replace('_',' ')}` : 'No active trip', fn: `showContainerDetail('${cont}')` });
+  });
 
-  pushGroup('Trips', db.trips.filter(t =>
-    has([t.ref, t.notes, t.workType, t.origin, t.dest, t.ctype])
-  ).slice(0,6).map(t => ({
-    primary: `${t.container} — ${t.origin} → ${t.dest}`,
-    secondary: `${t.status.replace('_',' ')} · ${t.workType} · Ref ${t.ref} · ${truckName(t.truckId)}`,
-    fn: `showTripDetail('${t.id}')`,
-  })));
-
-  pushGroup('Shipping Lines', db.shippingLines.filter(l =>
-    has([l.code, l.name, l.contact])
-  ).slice(0,4).map(l => ({
-    primary: `${l.code} — ${l.name}`,
-    secondary: `${l.active ? 'Active' : 'Inactive'} · ${l.contact||''}`,
-    fn: `showSection('shippinglines', document.querySelector('[data-section="shippinglines"]'))`,
-  })));
-
-  pushGroup('Maintenance', db.maintenance.filter(m =>
-    has([m.desc, m.tech, m.type]) || truckName(m.truckId).toLowerCase().includes(q)
-  ).slice(0,4).map(m => ({
-    primary: `${truckName(m.truckId)} — ${m.type}`,
-    secondary: `${m.status.replace('_',' ')} · ${(m.desc||'').slice(0,55)}`,
-    fn: `showMaintDetail('${m.id}')`,
-  })));
-
-  pushGroup('Fuel Logs', db.fuel.filter(f =>
-    has([f.station, f.receipt]) || truckName(f.truckId).toLowerCase().includes(q) || driverName(f.driverId).toLowerCase().includes(q)
-  ).slice(0,4).map(f => ({
-    primary: `${truckName(f.truckId)} — ${f.litres}L`,
-    secondary: `${f.station} · ${fmtDate(f.date)} · ${fmtKsh(f.litres*f.pricePerLitre)}`,
-    fn: `showSection('fuel', document.querySelector('[data-section="fuel"]'))`,
-  })));
-
-  pushGroup('Shutouts', db.shutouts.filter(s =>
-    has([s.vessel, s.voyage, s.reason, s.notes])
-  ).slice(0,4).map(s => ({
-    primary: s.container,
-    secondary: `${s.status} · ${s.vessel} · ${s.reason||''}`,
-    fn: `showContainerDetail('${s.container}')`,
-  })));
-
-  pushGroup('Interchange', db.interchange.filter(i =>
-    has([i.type, i.condition, i.notes])
-  ).slice(0,4).map(i => ({
-    primary: `${i.container} — ${i.type}`,
-    secondary: `${i.status} · ${i.condition}`,
-    fn: `showContainerDetail('${i.container}')`,
-  })));
-
-  pushGroup('Requisitions', db.requisitions.filter(r =>
-    has([r.items, r.category, r.requester, r.notes])
-  ).slice(0,4).map(r => ({
-    primary: `${r.category} — ${fmtKsh(r.amount)}`,
-    secondary: `${r.status} · ${r.requester}`,
-    fn: `showSection('requisitions', document.querySelector('[data-section="requisitions"]'))`,
-  })));
-
-  pushGroup('Workshop', db.workshop.filter(w =>
-    has([w.title, w.desc, w.tech]) || truckName(w.truckId).toLowerCase().includes(q)
-  ).slice(0,4).map(w => ({
-    primary: w.title,
-    secondary: `${truckName(w.truckId)} · ${w.status.replace('_',' ')}`,
-    fn: `showSection('workshop', document.querySelector('[data-section="workshop"]'))`,
-  })));
-
-  pushGroup('Invoices', db.invoices.filter(i =>
-    has([i.client, i.ref, i.notes])
-  ).slice(0,4).map(i => ({
-    primary: `${i.ref} — ${i.client}`,
-    secondary: `${i.status} · ${fmtKsh(i.total)}`,
-    fn: `showInvoiceDetail('${i.id}')`,
-  })));
-
-  if (isAdmin()) {
-    pushGroup('Users', db.profiles.filter(u =>
-      has([u.name, u.username, u.email])
-    ).slice(0,4).map(u => ({
-      primary: u.name,
-      secondary: `${roleLabel(u.role)} · ${u.username}`,
-      fn: `showUserDetail('${u.id}')`,
-    })));
-  }
-
-  panel.innerHTML = groups.length
-    ? groups.map(g => `
-      <div class="search-group-label">${g.label}</div>
-      ${g.items.map(it => `
-        <div class="search-result-item" onclick="${it.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''">
-          <span class="search-result-type">${g.label}</span>
-          <div><div style="font-size:12px;color:var(--text)">${it.primary}</div><div style="font-size:10px;color:var(--text-3)">${it.secondary}</div></div>
-        </div>`).join('')}
-    `).join('')
+  db.trucks.filter(t=>t.reg.toLowerCase().includes(q)||t.make.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+    results.push({ type:'Truck', label: `${t.reg} — ${t.make}`, sub:t.status, fn: `showTruckDetail('${t.id}')` });
+  });
+  db.drivers.filter(d=>d.name.toLowerCase().includes(q)||d.phone.includes(q)).slice(0,3).forEach(d=>{
+    results.push({ type:'Driver', label:d.name, sub:d.status, fn: `showDriverDetail('${d.id}')` });
+  });
+  db.trips.filter(t=>t.origin.toLowerCase().includes(q)||t.dest.toLowerCase().includes(q)).slice(0,3).forEach(t=>{
+    results.push({ type:'Trip', label: `${t.container} — ${t.origin}→${t.dest}`, sub:t.status, fn: `showTripDetail('${t.id}')` });
+  });
+  db.invoices.filter(i=>i.client.toLowerCase().includes(q)||i.ref.toLowerCase().includes(q)).slice(0,2).forEach(i=>{
+    results.push({ type:'Invoice', label: `${i.ref} — ${i.client}`, sub:i.status, fn: `showInvoiceDetail('${i.id}')` });
+  });
+  panel.innerHTML = results.length
+    ? results.map(r=>`<div class="search-result-item" onclick="${r.fn};document.getElementById('searchResults').style.display='none';document.getElementById('globalSearch').value=''"><span class="search-result-type">${r.type}</span><div><div style="font-size:12px;color:var(--text)">${r.label}</div><div style="font-size:10px;color:var(--text-3)">${r.sub}</div></div></div>`).join('')
     : `<div style="padding:12px 16px;font-size:11.5px;color:var(--text-3)">No results for "${q}"</div>`;
-  panel.style.display = 'block';
-  appendDocSearchResults(q);
+  panel.style.display='block';
 }
 
 
@@ -4273,9 +4050,6 @@ function showContainerDetail(contRaw) {
   const actionsHtml = actions.length ? `<div style="padding-top:12px;border-top:1px solid var(--border);margin-top:14px"><div style="font-family:var(--font-mono);font-size:8px;letter-spacing:1.5px;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Actions</div><div style="display:flex;gap:6px;flex-wrap:wrap">${actions.join('')}</div></div>` : '';
 
   openModal(`Container — ${cont}`, `${summary}${tripsHtml}${shutoutsHtml}${interchangeHtml}${actionsHtml}`);
-  const mb = document.getElementById('modalBody');
-  if (mb) mb.dataset.container = cont;
-  appendContainerLinkedDocuments(cont);
 }
 
 function handleSearch(q) {
@@ -4415,15 +4189,199 @@ window.showAdminSection = function(sec, btn) {
   origShowAdminSection(sec, btn);
 };
 
-// ============================================================
-//  PWA INSTALL
-// ============================================================
+ // ================== PUBLIC BOOKINGS ==================
+
+let _publicBookingFilter = 'pending';
+
+function filterPublicBookings(filter, btn) {
+  _publicBookingFilter = filter;
+  document.querySelectorAll('#sec-publicbookings .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderPublicBookings();
+}
+
+async function renderPublicBookings() {
+  const container = document.getElementById('publicBookingsList');
+  if (!container) return;
+
+  let query = supabase.from('public_bookings').select('*');
+  if (_publicBookingFilter !== 'all') {
+    query = query.eq('status', _publicBookingFilter);
+  }
+  const { data, error } = await query.order('created_at', { ascending: false });
+
+  if (error) {
+    container.innerHTML = `<div class="empty-state">Error: ${error.message}</div>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    container.innerHTML = `<div class="empty-state">No ${_publicBookingFilter} bookings</div>`;
+    return;
+  }
+
+  container.innerHTML = data.map(b => {
+    let importedAction = '';
+    if (b.status === 'imported') {
+      const trip = findTripByBookingId(b.id);
+      if (trip && (!trip.truckId || !trip.driverId)) {
+        importedAction = `<button class="modal-btn primary" onclick="jumpToCompleteDispatch('${trip.id}')">Complete Dispatch →</button>`;
+      } else if (trip) {
+        importedAction = `<button class="modal-btn ghost" onclick="showTripDetail('${trip.id}')">View Trip</button>`;
+      }
+    }
+    return `
+    <div style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:10px;background:#111;">
+      <div><strong>${sanitize(b.full_name)}</strong> (${sanitize(b.email)})</div>
+      <div>Service: ${sanitize(b.service_type)}</div>
+<div>Container: ${sanitize(b.container) || 'Not provided'}</div>
+<div style="font-size:10px;color:var(--text-3);">Booking ID: ${b.id.slice(0,8)}</div>
+      <div>Pickup: ${sanitize(b.pickup_location)} → Drop: ${sanitize(b.dropoff_location)}</div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="sbadge s-${b.status}">${b.status}</span>
+        ${b.status === 'pending' ? `<button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">Import to Fleet</button>` : ''}
+        ${importedAction}
+        <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
+      </div>
+    </div>
+  `; }).join('');
+
+  // Update badge
+  const badge = document.getElementById('badge-publicbookings');
+  if (badge) {
+    const pending = data.filter(b => b.status === 'pending').length;
+    badge.textContent = pending || '';
+    badge.style.display = pending ? 'inline' : 'none';
+  }
+}
+
+
+function findTripByBookingId(bookingId) {
+  return state.db.trips.find(t => t.bookingId === bookingId);
+}
+
+async function importPublicBooking(bookingId) {
+  if (!confirm('Import this booking?')) return;
+  const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
+  if (error || !booking) { toast('Booking not found', 'error'); return; }
+  if (booking.status !== 'pending') { toast('Already processed', 'warning'); return; }
+
+  // Single source of truth for the "docs verified before import" gate —
+  // DepOps' Inbound tab surfaces the same check via readyToProcessBookings(),
+  // but this is what actually enforces it, so nothing can bypass DepOps and
+  // import straight from Public Bookings with missing/unverified paperwork.
+  try {
+    const required = window.bookingDocs.getRequiredDocTypes({
+      serviceType: booking.service_type,
+      origin: booking.pickup_location,
+      destination: booking.dropoff_location,
+    });
+    if (required.length) {
+      const docs = await window.bookingDocs.documentsForBooking(bookingId);
+      const verifiedTypes = {};
+      docs.forEach(d => { if (d.status === 'verified') verifiedTypes[d.doc_type] = true; });
+      const missing = required.filter(rt => !verifiedTypes[rt]);
+      if (missing.length) {
+        toast(`Can't import — still missing verified: ${missing.join(', ').replace(/_/g,' ')}. Verify documents in DepOps first.`, 'error', 6000);
+        return;
+      }
+    }
+  } catch (e) {
+    toast(`Could not confirm document status (${(e && e.message) || 'error'}) — import blocked until this can be checked.`, 'error', 6000);
+    return;
+  }
+
+  const rawCont = (booking.container || '').trim().toUpperCase();
+  if (rawCont) {
+    if (!isValidContainerFormat(rawCont)) { toast(`Booking has an invalid container number (${rawCont}) — fix it before importing`, 'error'); return; }
+    const dupTrip = findLiveTripByContainer(rawCont);
+    if (dupTrip) { toast(`${rawCont} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest}). Resolve that trip first, or correct the container number on this booking.`, 'error'); return; }
+  }
+
+
+  const { data: updatedRows, error: updateErr } = await supabase
+    .from('public_bookings')
+    .update({ status: 'imported' })
+    .eq('id', bookingId)
+    .eq('status', 'pending') 
+    .select();
+
+  if (updateErr) {
+    toast(`Import failed — could not update booking status (${updateErr.message}). No trip was created.`, 'error');
+    return;
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    toast('Import failed — booking was already processed by someone else. Refresh and check.', 'warning');
+    renderPublicBookings();
+    return;
+  }
+
+
+  // Depot Storage bookings never become an Active Trip on import — they go
+  // to the depot storage list (container + zone) via DepOps, and only turn
+  // into a trip later, when repatriation is actually started from there.
+  if (booking.service_type === 'Depot Storage') {
+    toast('Imported into depot storage — allocate a zone from DepOps', 'success');
+    renderPublicBookings();
+    return;
+  }
+
+  const trip = {
+    id: uid('TRIP'),
+    container: rawCont || `PUB-${booking.id.slice(0,8)}`,
+    ctype: booking.cargo_type || '20ft Dry',
+    workType: booking.service_type || 'Other',
+    origin: booking.pickup_location || '—',
+    dest: booking.dropoff_location || '—',
+    shippingLine: null,
+    status: 'active',
+    startTime: new Date().toISOString(),
+    eta: new Date(Date.now() + 4*3600000).toISOString(),
+    distance: 0,
+    priority: 'Normal',
+    notes: `Imported from public booking #${booking.id}`,
+    ref: `PUB-${booking.id.slice(0,8)}`,
+    truckId: null,
+    driverId: null,
+    containerImages: [],
+    bookingId: booking.id,
+  };
+  state.db.trips.push(trip);
+  scheduleSave();
+
+  toast('Imported — awaiting dispatch (trip ' + trip.id.slice(-6) + ')', 'success');
+  renderPublicBookings();
+  refreshAwaitingDispatchUI();
+}
+
+async function showPublicBookingDetail(id) {
+  const { data: b, error } = await supabase.from('public_bookings').select('*').eq('id', id).single();
+  if (error || !b) { toast('Not found', 'error'); return; }
+  openModal('Booking Detail', `<pre>${JSON.stringify(b, null, 2)}</pre>`);
+}
+
+async function refreshPublicBookings() {
+  toast('Refreshing...', 'info');
+  await renderPublicBookings();
+}
+
+(function init() {
+  try {
+    runLoader();
+  } catch(e) {
+    console.error('Initialization error:', e);
+    toast('System initialization error. Please refresh.', 'error');
+  }
+
+
+})();
+
 
 let deferredInstallPrompt = null;
 
 function isStandaloneDisplay() {
   return window.matchMedia('(display-mode: standalone)').matches
-    || window.navigator.standalone === true;
+    || window.navigator.standalone === true; // iOS Safari
 }
 
 function isIOSDevice() {
@@ -4442,12 +4400,14 @@ function initInstallApp() {
     return;
   }
 
+ 
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
     setInstallButtonVisible(true);
   });
 
+  
   if (isIOSDevice()) {
     setInstallButtonVisible(true);
   }
@@ -4498,14 +4458,18 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch((err) => {
       console.error('Service worker registration failed:', err);
     });
+ 
+    navigator.serviceWorker.addEventListener('message', (event) => {
+      if (event.data && event.data.type === 'SW_UPDATED') {
+        toast('A new version is available — reloading…', 'info', 2500);
+        setTimeout(() => window.location.reload(), 1200);
+      }
+    });
   });
 }
 
 initInstallApp();
 
-// ============================================================
-//  HARD REFRESH
-// ============================================================
 
 async function hardRefreshSystem() {
   const btn = document.getElementById('refreshAppBtn');
@@ -4532,15 +4496,519 @@ async function hardRefreshSystem() {
   window.location.replace(url.toString());
 }
 
-// ============================================================
-//  INITIALIZATION
-// ============================================================
+// ================== DEPOPS ==================
+// Fleet-side home for document review + depot storage. Reuses
+// booking-documents.js (window.bookingDocs) for everything that touches
+// booking_documents / depot_storage_zones — the staff portal talks to the
+// exact same tables/functions, so a document verified here shows verified
+// there and vice versa; there's no separate cache or duplicate query.
 
-(function init() {
+const DEPOPS_DOC_LABELS = {
+  guarantee_form: 'Container Guarantee Form',
+  release_order: 'Release Order (CRO)',
+  delivery_order: 'Delivery Order',
+};
+
+let _depOpsTab = 'inbound';
+let _depOpsInboundFilter = 'pending_review';
+let _depOpsOutboundFilter = 'pending_review';
+
+function depOpsFmtDT(raw) {
+  if (!raw) return '—';
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? String(raw) : d.toLocaleString('en-KE', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
+// pending_review/verified/rejected aren't in sbadge()'s status→style map
+// (that map is for trucks/trips/invoices etc.) — reuse its closest existing
+// colour instead of adding new CSS.
+function docStatusBadge(status) {
+  const styleKey = { verified: 'approved', pending_review: 'pending', rejected: 'rejected' }[status] || 'pending';
+  const label = status === 'pending_review' ? 'Pending Review' : (status.charAt(0).toUpperCase() + status.slice(1));
+  return `<span class="sbadge s-${styleKey}">${label}</span>`;
+}
+
+function switchDepOpsTab(tab, btn) {
+  _depOpsTab = tab;
+  document.querySelectorAll('#sec-depops .depops-tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  document.querySelectorAll('#sec-depops .depops-tab-panel').forEach(p => p.classList.remove('active'));
+  const panel = document.getElementById('depopsPanel-' + tab);
+  if (panel) panel.classList.add('active');
+  renderDepOps();
+}
+
+async function renderDepOps() {
+  renderDepOpsZones();
+  renderDepOpsStorageList();
+  updateDepOpsBadge();
+  if (_depOpsTab === 'inbound') await renderDepOpsInbound();
+  else await renderDepOpsOutbound();
+}
+
+async function updateDepOpsBadge() {
+  const badge = document.getElementById('badge-depops');
+  if (!badge || !window.bookingDocs) return;
   try {
-    runLoader();
-  } catch(e) {
-    console.error('Initialization error:', e);
-    toast('System initialization error. Please refresh.', 'error');
+    const [inboundPending, outboundPending] = await Promise.all([
+      window.bookingDocs.reviewQueue('pending_review'),
+      window.bookingDocs.outboundReviewQueue('pending_review'),
+    ]);
+    const count = inboundPending.length + outboundPending.length;
+    badge.textContent = count || '';
+    badge.style.display = count ? 'inline' : 'none';
+  } catch (e) { /* badge is best-effort, never blocks the section */ }
+}
+
+async function renderDepOpsZones() {
+  const wrap = document.getElementById('depopsZones');
+  if (!wrap) return;
+  try {
+    const zones = await window.bookingDocs.storageAvailability();
+    if (!zones.length) { wrap.innerHTML = '<div class="empty-state" style="padding:16px"><div class="empty-state-label">No storage zones configured yet</div></div>'; return; }
+    wrap.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
+        <th style="padding:6px 8px">Zone</th><th style="padding:6px 8px">Occupied</th><th style="padding:6px 8px">Free</th>
+      </tr></thead><tbody>${zones.map(z => {
+        const cap = z.capacity_teu || 0, occ = z.occupied_teu || 0, free = Math.max(cap - occ, 0);
+        const pct = cap > 0 ? Math.min(100, Math.round(occ / cap * 100)) : 0;
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:6px 8px">${sanitize(z.zone_name)}</td>
+          <td style="padding:6px 8px">${occ} / ${cap} TEU<div style="width:100px;height:5px;background:#222;border-radius:3px;overflow:hidden;margin-top:4px"><div style="width:${pct}%;height:100%;background:var(--gold)"></div></div></td>
+          <td style="padding:6px 8px">${free} TEU</td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
   }
-})();
+}
+
+// Simple container + zone list of everything currently occupying depot
+// storage (imported bookings with storage allocated, not yet dispatched
+// out again). This is deliberately separate from Active Trips — storage
+// bookings don't become a trip until repatriation is actually started.
+async function renderDepOpsStorageList() {
+  const wrap = document.getElementById('depopsStorageList');
+  if (!wrap) return;
+  try {
+    const [bookings, zones] = await Promise.all([
+      depOpsRepatriationEligibleBookings(),
+      window.bookingDocs.storageAvailability(),
+    ]);
+    if (!bookings.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No containers currently in storage</div></div>'; return; }
+    const zoneMap = {}; zones.forEach(z => { zoneMap[z.id] = z.zone_name; });
+    wrap.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <thead><tr style="text-align:left;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
+        <th style="padding:6px 8px">Container</th><th style="padding:6px 8px">Zone</th><th style="padding:6px 8px">Client</th><th style="padding:6px 8px"></th>
+      </tr></thead><tbody>${bookings.map(b => {
+        const zoneName = (b.storage_zone_id && zoneMap[b.storage_zone_id]) || 'Unknown zone';
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:6px 8px" class="mono">${sanitize(b.container) || '—'}</td>
+          <td style="padding:6px 8px">${sanitize(zoneName)}</td>
+          <td style="padding:6px 8px">${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</td>
+          <td style="padding:6px 8px"><button class="modal-btn ghost" onclick="depOpsDispatchContainer('${b.id}')">Dispatch →</button></td>
+        </tr>`;
+      }).join('')}</tbody></table>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+// Routes a "Dispatch" click from the storage list to the right place:
+// - If an outbound trip already exists for this booking, jump straight
+//   into the Dispatch Console with that trip loaded (same as the
+//   "Complete Dispatch" flow used elsewhere).
+// - Otherwise the container needs a destination/TEU picked first, so
+//   send staff to DepOps' Outbound tab, to the same booking's card in
+//   "Eligible for Repatriation" — creating the trip there is what makes
+//   it show up in the Dispatch Console's Awaiting Dispatch queue.
+function depOpsDispatchContainer(bookingId) {
+  const existingTrip = state.db.trips.find(t => t.workType === 'Depot → Port' && t.bookingId === bookingId);
+  if (existingTrip) {
+    jumpToCompleteDispatch(existingTrip.id);
+    return;
+  }
+  showSection('depops', document.querySelector('[data-section="depops"]'));
+  switchDepOpsTab('outbound', document.querySelector('.depops-tab-btn:nth-child(2)'));
+  toast('Pick a destination and create the outbound trip below — it will then appear in the Dispatch Console.', 'info', 5000);
+  setTimeout(() => {
+    const el = document.getElementById('depopsEligibleList');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 150);
+}
+
+// ---------- Inbound ----------
+
+function filterDepOpsInbound(status, btn) {
+  _depOpsInboundFilter = status;
+  document.querySelectorAll('#depopsPanel-inbound .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDepOpsInbound();
+}
+
+async function renderDepOpsInbound() {
+  await renderDepOpsReadyToProcess();
+  const container = document.getElementById('depopsInboundQueue');
+  if (!container) return;
+  container.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const docs = await window.bookingDocs.reviewQueue(_depOpsInboundFilter);
+    if (!docs.length) { container.innerHTML = `<div class="empty-state"><div class="empty-state-label">No ${_depOpsInboundFilter.replace(/_/g,' ')} documents</div></div>`; return; }
+    container.innerHTML = docs.map(d => depOpsDocCard(d, 'inbound')).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+async function renderDepOpsReadyToProcess() {
+  const wrap = document.getElementById('depopsReadyList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const ready = await window.bookingDocs.readyToProcessBookings();
+    if (!ready.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No bookings are fully verified yet</div></div>'; return; }
+    const zones = await window.bookingDocs.storageAvailability();
+    wrap.innerHTML = ready.map(entry => depOpsReadyCard(entry, zones)).join('');
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+function depOpsReadyCard(entry, zones) {
+  const b = entry.booking;
+  const zoneOptions = zones.map(z => {
+    const free = Math.max((z.capacity_teu || 0) - (z.occupied_teu || 0), 0);
+    return `<option value="${z.id}">${sanitize(z.zone_name)} (${free} TEU free)</option>`;
+  }).join('');
+  return `<div style="border:1px solid rgba(34,197,94,0.35);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:rgba(34,197,94,0.05)">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <strong>${sanitize(b.full_name)}</strong>${b.company ? ' · ' + sanitize(b.company) : ''}
+        <div style="font-size:11px;color:var(--text-3)">${sanitize(b.service_type)} · Container: ${sanitize(b.container) || '—'}</div>
+        <div style="font-size:10px;color:var(--text-3)">Booking ${b.id.slice(0,8)} · Verified: ${entry.required.join(', ').replace(/_/g,' ')}</div>
+      </div>
+      <span class="sbadge s-approved">verified & ready</span>
+    </div>
+    ${b.storage_status === 'allocated'
+      ? '<div style="margin-top:8px;font-size:11.5px;color:var(--green)">✓ Storage already allocated</div>'
+      : `<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:end">
+          <select id="depopsZoneSel-${b.id}" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"><option value="">Allocate storage (optional)…</option>${zoneOptions}</select>
+          <input type="number" id="depopsTeu-${b.id}" min="1" value="1" style="width:64px;padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px">
+          <button class="action-btn" onclick="depOpsAllocateForBooking('${b.id}')">Allocate</button>
+        </div>`}
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="modal-btn primary" onclick="importPublicBooking('${b.id}')">${b.service_type === 'Depot Storage' ? 'Confirm Into Storage →' : 'Import to Fleet →'}</button>
+      <button class="modal-btn ghost" onclick="showPublicBookingDetail('${b.id}')">View</button>
+    </div>
+  </div>`;
+}
+
+async function depOpsAllocateForBooking(bookingId) {
+  const zoneEl = document.getElementById('depopsZoneSel-' + bookingId);
+  const teuEl = document.getElementById('depopsTeu-' + bookingId);
+  const zoneId = zoneEl ? zoneEl.value : '';
+  const teu = teuEl ? parseInt(teuEl.value, 10) : 0;
+  if (!zoneId) { toast('Select a zone', 'error'); return; }
+  if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
+  try {
+    await window.bookingDocs.allocateStorage(bookingId, zoneId, teu);
+    toast('Storage allocated', 'success');
+    renderDepOpsReadyToProcess();
+    renderDepOpsZones();
+    renderDepOpsStorageList();
+  } catch (e) { toast(e.message || 'Could not allocate storage', 'error'); }
+}
+
+// ---------- Outbound / repatriation ----------
+
+function filterDepOpsOutbound(status, btn) {
+  _depOpsOutboundFilter = status;
+  document.querySelectorAll('#depopsPanel-outbound .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDepOpsOutbound();
+}
+
+async function renderDepOpsOutbound() {
+  await renderDepOpsEligible();
+  await renderDepOpsOutboundTrips();
+  const container = document.getElementById('depopsOutboundQueue');
+  if (!container) return;
+  container.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const docs = await window.bookingDocs.outboundReviewQueue(_depOpsOutboundFilter);
+    if (!docs.length) { container.innerHTML = `<div class="empty-state"><div class="empty-state-label">No ${_depOpsOutboundFilter.replace(/_/g,' ')} release orders</div></div>`; return; }
+    container.innerHTML = docs.map(d => depOpsDocCard(d, 'outbound')).join('');
+  } catch (e) {
+    container.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+// Depot-held containers eligible to start a repatriation trip: imported
+// bookings with allocated storage that don't already have an outbound
+// trip against them. (See depops-schema.sql notes — public_bookings has
+// no per-booking TEU field, so the TEU to release is re-entered here,
+// same as it was on the original allocateStorage() call.)
+async function depOpsRepatriationEligibleBookings() {
+  const { data, error } = await supabase
+    .from('public_bookings')
+    .select('*')
+    .eq('status', 'imported')
+    .eq('storage_status', 'allocated')
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message || 'Could not load bookings');
+  const outboundBookingIds = new Set(
+    state.db.trips.filter(t => t.workType === 'Depot → Port' && t.bookingId).map(t => t.bookingId)
+  );
+  return (data || []).filter(b => !outboundBookingIds.has(b.id));
+}
+
+async function renderDepOpsEligible() {
+  const wrap = document.getElementById('depopsEligibleList');
+  if (!wrap) return;
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const [bookings, zones] = await Promise.all([
+      depOpsRepatriationEligibleBookings(),
+      window.bookingDocs.storageAvailability(),
+    ]);
+    if (!bookings.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No depot-held containers awaiting repatriation</div></div>'; return; }
+    const zoneMap = {}; zones.forEach(z => { zoneMap[z.id] = z.zone_name; });
+    wrap.innerHTML = bookings.map(b => depOpsEligibleCard(b, zoneMap)).join('');
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+function depOpsEligibleCard(b, zoneMap) {
+  const zoneName = (b.storage_zone_id && zoneMap[b.storage_zone_id]) || 'Unknown zone';
+  const portOptions = window.bookingDocs.PORT_LOCATIONS.map(p => `<option value="${sanitize(p)}">${sanitize(p)}</option>`).join('');
+  return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
+    <div><strong>${sanitize(b.container) || 'No container on file'}</strong> <span style="font-size:11px;color:var(--text-3)">· ${sanitize(b.full_name)}${b.company ? ' · ' + sanitize(b.company) : ''}</span></div>
+    <div style="font-size:10.5px;color:var(--text-3);margin-top:2px">Booking ${b.id.slice(0,8)} · Currently in ${sanitize(zoneName)}</div>
+    <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:end">
+      <input type="number" id="depopsRelTeu-${b.id}" min="1" value="1" title="TEU to release from ${sanitize(zoneName)} once this container departs" style="width:64px;padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">
+      <select id="depopsDest-${b.id}" style="padding:6px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px">${portOptions}</select>
+      <button class="modal-btn primary" onclick="depOpsCreateOutboundFromBooking('${b.id}')">Create Outbound Trip →</button>
+    </div>
+  </div>`;
+}
+
+async function depOpsCreateOutboundFromBooking(bookingId) {
+  const teuEl = document.getElementById('depopsRelTeu-' + bookingId);
+  const destEl = document.getElementById('depopsDest-' + bookingId);
+  const teu = teuEl ? parseInt(teuEl.value, 10) : 0;
+  const dest = destEl ? destEl.value : '';
+  if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
+
+  const { data: booking, error } = await supabase.from('public_bookings').select('*').eq('id', bookingId).single();
+  if (error || !booking) { toast('Booking not found', 'error'); return; }
+  if (!booking.storage_zone_id) { toast('This booking has no recorded storage zone', 'error'); return; }
+
+  const container = (booking.container || '').trim().toUpperCase() || `REPAT-${booking.id.slice(0,8)}`;
+  const dupTrip = findLiveTripByContainer(container);
+  if (dupTrip) { toast(`${container} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest})`, 'error'); return; }
+
+  const trip = {
+    id: uid('TRIP'), container, ctype: booking.cargo_type || '20ft Dry',
+    workType: 'Depot → Port', origin: 'Depot', dest,
+    shippingLine: null, status: 'active', startTime: new Date().toISOString(),
+    eta: new Date(Date.now() + 4*3600000).toISOString(), distance: 0, priority: 'Normal',
+    notes: `Repatriation for booking #${booking.id}`, ref: `REPAT-${booking.id.slice(0,8)}`,
+    truckId: null, driverId: null, containerImages: [], bookingId: booking.id,
+    storageZoneId: booking.storage_zone_id, storageTeu: teu, storageReleased: false,
+  };
+  state.db.trips.push(trip);
+  scheduleSave();
+  toast('Outbound trip created — upload the release order next', 'success');
+  renderDepOpsOutbound();
+  renderDepOpsStorageList();
+  refreshAwaitingDispatchUI();
+}
+
+async function depOpsCreateManualOutbound() {
+  const containerEl = document.getElementById('depopsManualContainer');
+  const zoneEl = document.getElementById('depopsManualZone');
+  const teuEl = document.getElementById('depopsManualTeu');
+  const destEl = document.getElementById('depopsManualDest');
+  const container = (containerEl.value || '').trim().toUpperCase();
+  const zoneId = zoneEl.value;
+  const teu = parseInt(teuEl.value, 10);
+  const dest = destEl.value;
+
+  if (!container || !isValidContainerFormat(container)) { toast('Enter a valid container number', 'error'); return; }
+  if (!zoneId) { toast('Select a zone', 'error'); return; }
+  if (!teu || teu < 1) { toast('Enter a valid TEU amount', 'error'); return; }
+  const dupTrip = findLiveTripByContainer(container);
+  if (dupTrip) { toast(`${container} is already on an active trip (${dupTrip.origin} → ${dupTrip.dest})`, 'error'); return; }
+
+  const trip = {
+    id: uid('TRIP'), container, ctype: '20ft Dry', workType: 'Depot → Port', origin: 'Depot', dest,
+    shippingLine: null, status: 'active', startTime: new Date().toISOString(),
+    eta: new Date(Date.now() + 4*3600000).toISOString(), distance: 0, priority: 'Normal',
+    notes: 'Manually added repatriation container (no originating booking)', ref: `REPAT-${container}`,
+    truckId: null, driverId: null, containerImages: [], bookingId: null,
+    storageZoneId: zoneId, storageTeu: teu, storageReleased: false,
+  };
+  state.db.trips.push(trip);
+  scheduleSave();
+  toast('Outbound trip created — upload the release order next', 'success');
+  containerEl.value = '';
+  renderDepOpsOutbound();
+  refreshAwaitingDispatchUI();
+}
+
+async function renderDepOpsOutboundTrips() {
+  const wrap = document.getElementById('depopsOutboundTripsList');
+  const formWrap = document.getElementById('depopsManualForm');
+  if (formWrap && !formWrap.dataset.loaded) {
+    try {
+      const zones = await window.bookingDocs.storageAvailability();
+      const zoneOptions = zones.map(z => `<option value="${z.id}">${sanitize(z.zone_name)}</option>`).join('');
+      const portOptions = window.bookingDocs.PORT_LOCATIONS.map(p => `<option value="${sanitize(p)}">${sanitize(p)}</option>`).join('');
+      formWrap.innerHTML = `<div class="panel" style="margin-bottom:14px">
+        <div class="panel-head"><span class="panel-title">Add Outbound Container Manually</span></div>
+        <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr 90px 1fr auto;gap:10px;align-items:end">
+          <div class="fg" style="margin:0"><label>Container No.</label><input id="depopsManualContainer" placeholder="e.g. MSCU1234567"></div>
+          <div class="fg" style="margin:0"><label>Zone</label><select id="depopsManualZone"><option value="">Select…</option>${zoneOptions}</select></div>
+          <div class="fg" style="margin:0"><label>TEU</label><input type="number" id="depopsManualTeu" min="1" value="1"></div>
+          <div class="fg" style="margin:0"><label>Destination</label><select id="depopsManualDest">${portOptions}</select></div>
+          <button class="modal-btn primary" onclick="depOpsCreateManualOutbound()">Create →</button>
+        </div>
+      </div>`;
+      formWrap.dataset.loaded = '1';
+    } catch (e) { /* form is a nice-to-have; the eligible/queue lists still work without it */ }
+  }
+
+  if (!wrap) return;
+  const trips = state.db.trips.filter(t => t.workType === 'Depot → Port');
+  if (!trips.length) { wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">No outbound/repatriation trips yet</div></div>'; return; }
+  wrap.innerHTML = '<div class="empty-state"><div class="empty-state-label">Loading…</div></div>';
+  try {
+    const docsByTrip = await window.bookingDocs.documentsForTrips(trips.map(t => t.id));
+    wrap.innerHTML = trips.map(t => depOpsOutboundTripCard(t, docsByTrip[t.id] || [])).join('');
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state">Error: ${sanitize(e.message || '')}</div>`;
+  }
+}
+
+function depOpsOutboundTripCard(t, docs) {
+  const doc = docs.find(d => d.doc_type === 'release_order');
+  const docBlock = doc
+    ? docStatusBadge(doc.status)
+    : `<button class="modal-btn primary" onclick="depOpsUploadReleaseOrder('${t.id}','${sanitize(t.container)}')">Upload Release Order</button>`;
+  const storageBlock = t.storageZoneId
+    ? (t.storageReleased ? '<span class="sbadge s-approved">storage released</span>' : `<span class="sbadge s-pending">${t.storageTeu || '?'} TEU pending release</span>`)
+    : '';
+  return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <strong class="mono" style="color:var(--gold)">${sanitize(t.container)}</strong>
+        <div style="font-size:11px;color:var(--text-3)">${sanitize(t.origin)} → ${sanitize(t.dest)}</div>
+        <div style="font-size:10px;color:var(--text-3)">${sanitize(t.ref)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        ${sbadge(t.status)}
+        ${storageBlock}
+      </div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      ${docBlock}
+      <button class="modal-btn ghost" onclick="showTripDetail('${t.id}')">View / Manage Trip</button>
+    </div>
+  </div>`;
+}
+
+function depOpsUploadReleaseOrder(tripId, container) {
+  openModal('Upload Release Order', `
+    <div class="fg"><label>Container</label><input value="${sanitize(container)}" disabled></div>
+    <div class="fg"><label>Release Order File</label><input type="file" id="depopsReleaseFile" accept=".pdf,.jpg,.jpeg,.png"></div>
+    <div id="depopsUploadMsg" style="font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <button class="submit-btn" onclick="depOpsConfirmUploadReleaseOrder('${tripId}','${sanitize(container).replace(/'/g,"\\'")}')">Upload</button>
+  `);
+}
+
+async function depOpsConfirmUploadReleaseOrder(tripId, container) {
+  const fileInput = document.getElementById('depopsReleaseFile');
+  const msg = document.getElementById('depopsUploadMsg');
+  const file = fileInput && fileInput.files && fileInput.files[0];
+  if (!file) { msg.textContent = 'Select a file first.'; msg.style.color = 'var(--red)'; return; }
+  msg.textContent = 'Uploading…'; msg.style.color = 'var(--text-3)';
+  try {
+    await window.bookingDocs.uploadTripDocument({ tripId, docType: 'release_order', containerNo: container, file });
+    msg.textContent = '✓ Uploaded'; msg.style.color = 'var(--green)';
+    setTimeout(() => { closeModal(); renderDepOpsOutbound(); }, 600);
+  } catch (e) {
+    msg.textContent = e.message || 'Upload failed'; msg.style.color = 'var(--red)';
+  }
+}
+
+// ---------- Shared doc card + review actions (both tabs) ----------
+
+function depOpsDocCard(doc, kind) {
+  const parent = kind === 'inbound' ? (doc.public_bookings || {}) : (doc.trips || {});
+  const ref = kind === 'inbound' ? (parent.full_name ? parent.full_name : (doc.booking_id || '').slice(0,8)) : (parent.container || (doc.trip_id || '').slice(0,8));
+  const who = kind === 'inbound'
+    ? [parent.company, parent.service_type].filter(Boolean).join(' · ') || 'Public booking'
+    : `${sanitize(parent.origin || '')} → ${sanitize(parent.destination || '')}`;
+  const label = DEPOPS_DOC_LABELS[doc.doc_type] || doc.doc_type;
+  const status = doc.status || 'pending_review';
+  const isPending = status === 'pending_review';
+
+  const actions = isPending
+    ? `<button class="modal-btn ghost" onclick="depOpsViewDoc('${doc.file_path.replace(/'/g,"\\'")}')">View / Download</button>
+       <button class="modal-btn primary" onclick="depOpsVerifyDoc('${doc.id}','${kind}')">Verify</button>
+       <button class="modal-btn danger" onclick="depOpsRejectDoc('${doc.id}','${kind}')">Reject…</button>`
+    : `<button class="modal-btn ghost" onclick="depOpsViewDoc('${doc.file_path.replace(/'/g,"\\'")}')">View / Download</button>`;
+
+  return `<div style="border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;background:var(--surface)" id="depopsDoc-${doc.id}">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+      <div>
+        <strong>${sanitize(String(ref))}</strong>
+        <div style="font-size:11px;color:var(--text-3)">${who}</div>
+        <div style="font-size:10px;color:var(--text-3)">${doc.container_no ? 'Container: ' + sanitize(doc.container_no) + ' · ' : ''}Uploaded ${depOpsFmtDT(doc.uploaded_at)}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <span style="font-size:10.5px;padding:3px 9px;border-radius:20px;background:rgba(201,162,39,0.12);color:var(--gold);border:1px solid var(--gold-border);white-space:nowrap">${sanitize(label)}</span>
+        ${!isPending ? docStatusBadge(status) : ''}
+      </div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">${actions}</div>
+    ${!isPending && doc.review_notes ? `<div style="margin-top:8px;font-size:11px;color:var(--text-3)">${depOpsFmtDT(doc.reviewed_at)} — ${sanitize(doc.review_notes)}</div>` : ''}
+  </div>`;
+}
+
+function depOpsViewDoc(filePath) {
+  window.bookingDocs.getDownloadUrl(filePath, 300)
+    .then(url => window.open(url, '_blank', 'noopener'))
+    .catch(err => toast(err.message || 'Could not open document', 'error'));
+}
+
+async function depOpsVerifyDoc(docId, kind) {
+  try {
+    await window.bookingDocs.verifyDocument(docId, null);
+    toast('Document verified', 'success');
+    if (kind === 'inbound') renderDepOpsInbound(); else renderDepOpsOutbound();
+    updateDepOpsBadge();
+  } catch (e) { toast(e.message || 'Could not verify document', 'error'); }
+}
+
+function depOpsRejectDoc(docId, kind) {
+  openModal('Reject Document', `
+    <div class="fg"><label>Reason (required — shown to the uploader)</label>
+    <textarea id="depopsRejectNote" rows="3" placeholder="e.g. Scan is illegible, wrong container number…"></textarea></div>
+    <button class="submit-btn" onclick="depOpsConfirmReject('${docId}','${kind}')">Confirm Reject</button>
+  `);
+}
+
+async function depOpsConfirmReject(docId, kind) {
+  const noteEl = document.getElementById('depopsRejectNote');
+  const note = (noteEl && noteEl.value || '').trim();
+  if (!note) { toast('A reason is required', 'error'); return; }
+  try {
+    await window.bookingDocs.rejectDocument(docId, note);
+    closeModal();
+    toast('Document rejected', 'warning');
+    if (kind === 'inbound') renderDepOpsInbound(); else renderDepOpsOutbound();
+    updateDepOpsBadge();
+  } catch (e) { toast(e.message || 'Could not reject document', 'error'); }
+}
